@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* =========================================================
+   LIGHT THEME (default)
+   ========================================================= */
+@theme {
+  /* Brand */
+  --color-primary: #2f55d4;
+  --color-secondary: #64748b;
+  --color-accent: #f59e0b;
+  --color-success: #16a34a;
+  --color-warning: #f59e0b;
+  --color-danger: #dc2626;
+
+  /* Surfaces */
+  --color-background: #f6f7fb;
+  --color-secondary-background: #ffffff;
+  --color-surface: #ffffff;
+
+  /* Text */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+
+  /* Border */
+  --color-border: #0f172a;
+}
+
+/* =========================================================
+   DARK THEME (overrides)
+   ========================================================= */
+:root[data-theme="dark"] {
+  --color-primary: #6481f7;
+  --color-secondary: #94a3b8;
+  --color-accent: #fbbf24;
+  --color-success: #22c55e;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+
+  --color-background: #0f172a;
+  --color-secondary-background: #1e293b;
+  --color-surface: #0b1120;
+
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+
+  --color-border: #e2e8f0;
+}
+
+/* =========================================================
+   Shared utilities
+   ========================================================= */
+@layer utilities {
+  .input {
+    @apply h-9 w-full rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary;
+  }
+
+  .btn-primary {
+    @apply h-9 rounded-md px-3 text-sm bg-primary text-white hover:bg-primary/90;
+  }
+
+  .btn-secondary {
+    @apply h-9 rounded-md px-3 text-sm border border-border/10 hover:bg-border/5;
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+@keyframes menuIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)  scale(1); }
+}
