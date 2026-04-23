@@ -105,7 +105,7 @@ export default function LoginPage() {
               : (mode === 'login' ? 'Σύνδεση' : 'Δημιουργία λογαριασμού')}
           </button>
         </form>
-        <p className="text-sm text-text-secondary text-center mt-4">
+        {/* <p className="text-sm text-text-secondary text-center mt-4">
           {mode === 'login' ? 'Δεν έχετε λογαριασμό;' : 'Έχετε ήδη λογαριασμό;'}{' '}
           <button
             onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null); }}
@@ -113,7 +113,7 @@ export default function LoginPage() {
           >
             {mode === 'login' ? 'Δημιουργήστε έναν' : 'Συνδεθείτε'}
           </button>
-        </p>
+        </p> */}
       </div>
     </div>
   );

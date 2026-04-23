@@ -5,6 +5,35 @@ import { useAuth } from '../../auth';
 import { fetchContacts, createContact, searchContacts } from './contactUtils';
 import type { Contact, ContactFormData } from './types';
 import NewContactModal from './modals/NewContactModal';
+import DataTable, { type ColumnDef } from '../../components/DataTable';
+
+const COLUMNS: ColumnDef<Contact>[] = [
+  {
+    key: 'name',
+    header: 'Όνομα',
+    render: (c) => <span className="font-medium text-text-primary">{c.name}</span>,
+    sortValue: (c) => c.name,
+  },
+  {
+    key: 'role',
+    header: 'Ρόλος',
+    render: (c) => <span className="text-text-secondary">{c.role ?? '—'}</span>,
+    sortValue: (c) => c.role ?? '',
+  },
+  {
+    key: 'phone',
+    header: 'Τηλέφωνο',
+    render: (c) => <span className="text-text-secondary">{c.phone ?? '—'}</span>,
+    sortValue: (c) => c.phone ?? '',
+  },
+  {
+    key: 'email',
+    header: 'Email',
+    render: (c) => <span className="text-text-secondary">{c.email ?? '—'}</span>,
+    sortValue: (c) => c.email ?? '',
+    defaultVisible: false,
+  },
+];
 
 export default function Contacts() {
   const { profile } = useAuth();
@@ -52,7 +81,7 @@ export default function Contacts() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
         <input
-          className="input w-full pl-9"
+          className="input w-full pl-9!"
           placeholder="Αναζήτηση με όνομα, τηλέφωνο ή email…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -61,38 +90,20 @@ export default function Contacts() {
 
       {loading ? (
         <p className="text-sm text-text-secondary">Φόρτωση…</p>
-      ) : contacts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-text-secondary">
-          <Users className="h-10 w-10 mb-3 opacity-30" />
-          <p className="text-sm">{query ? 'Δεν βρέθηκαν επαφές.' : 'Δεν υπάρχουν επαφές ακόμα.'}</p>
-        </div>
       ) : (
-        <div className="rounded-xl border border-border/10 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-white/3 border-b border-border/10 text-text-secondary text-xs uppercase tracking-wider">
-                <th className="text-left px-4 py-3 font-medium">Όνομα</th>
-                <th className="text-left px-4 py-3 font-medium">Ρόλος</th>
-                <th className="text-left px-4 py-3 font-medium">Τηλέφωνο</th>
-                <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Email</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/10">
-              {contacts.map((c) => (
-                <tr
-                  key={c.id}
-                  onClick={() => navigate(`/contacts/${c.id}`)}
-                  className="hover:bg-white/3 cursor-pointer transition-colors"
-                >
-                  <td className="px-4 py-3 font-medium text-text-primary">{c.name}</td>
-                  <td className="px-4 py-3 text-text-secondary">{c.role ?? '—'}</td>
-                  <td className="px-4 py-3 text-text-secondary">{c.phone ?? '—'}</td>
-                  <td className="px-4 py-3 text-text-secondary hidden md:table-cell">{c.email ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          tableId="contacts"
+          columns={COLUMNS}
+          data={contacts}
+          rowKey={(c) => c.id}
+          onRowClick={(c) => navigate(`/contacts/${c.id}`)}
+          emptyState={
+            <div className="flex flex-col items-center justify-center py-8 text-text-secondary">
+              <Users className="h-10 w-10 mb-3 opacity-30" />
+              <p className="text-sm">{query ? 'Δεν βρέθηκαν επαφές.' : 'Δεν υπάρχουν επαφές ακόμα.'}</p>
+            </div>
+          }
+        />
       )}
 
       <NewContactModal open={showCreate} onClose={() => setShowCreate(false)} onSubmit={handleCreate} />

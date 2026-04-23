@@ -1,4 +1,3 @@
-/* @refresh reload */
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { AuthContext, type AuthCtx, type Profile, type Session } from './AuthContext';

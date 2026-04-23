@@ -71,7 +71,7 @@ export default function ContactDetail() {
   if (!contact) return <div className="p-6 text-sm text-text-secondary">Η επαφή δεν βρέθηκε.</div>;
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
+    <div className="p-6 space-y-6">
       <button onClick={() => navigate('/contacts')} className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
         <ArrowLeft className="h-4 w-4" />
         Επαφές

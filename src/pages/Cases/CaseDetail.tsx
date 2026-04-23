@@ -52,7 +52,7 @@ export default function CaseDetail() {
   if (!caseData) return <div className="p-6 text-sm text-text-secondary">Η υπόθεση δεν βρέθηκε.</div>;
 
   return (
-    <div className="p-6 space-y-4 max-w-4xl">
+    <div className="p-6 space-y-4">
       <button
         onClick={() => navigate('/cases')}
         className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer"

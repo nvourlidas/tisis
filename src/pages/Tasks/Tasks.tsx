@@ -5,6 +5,44 @@ import { useAuth } from '../../auth';
 import { fetchAllTasks, completeTask, reopenTask, createTask, groupTasks } from './taskUtils';
 import { searchCasesForCall } from '../Calls/callUtils';
 import type { Task } from './taskUtils';
+import DataTable, { type ColumnDef } from '../../components/DataTable';
+
+type TaskGroup = 'overdue' | 'today' | 'upcoming' | 'noDueDate' | 'done';
+
+const GROUP_LABELS: Record<TaskGroup, string> = {
+  overdue: 'Ληξιπρόθεσμη',
+  today: 'Σήμερα',
+  upcoming: 'Επερχόμενη',
+  noDueDate: 'Χωρίς προθεσμία',
+  done: 'Ολοκληρωμένη',
+};
+
+const GROUP_COLORS: Record<TaskGroup, string> = {
+  overdue: 'bg-orange-500/15 text-orange-400',
+  today: 'bg-primary/15 text-primary',
+  upcoming: 'bg-border/20 text-text-secondary',
+  noDueDate: 'bg-border/20 text-text-secondary',
+  done: 'bg-green-500/15 text-green-400',
+};
+
+function getTaskGroup(task: Task, today: string): TaskGroup {
+  if (task.status === 'done') return 'done';
+  if (!task.due_date) return 'noDueDate';
+  if (task.due_date < today) return 'overdue';
+  if (task.due_date === today) return 'today';
+  return 'upcoming';
+}
+
+// Attach group info to tasks for display + sorting
+type TaskWithGroup = Task & { _group: TaskGroup };
+
+const GROUP_ORDER: Record<TaskGroup, number> = {
+  overdue: 0,
+  today: 1,
+  upcoming: 2,
+  noDueDate: 3,
+  done: 4,
+};
 
 export default function Tasks() {
   const { profile } = useAuth();
@@ -13,7 +51,6 @@ export default function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [showDone, setShowDone] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
   const load = () => {
@@ -35,11 +72,113 @@ export default function Tasks() {
     }
   };
 
+  const today = new Date().toISOString().slice(0, 10);
+
+  const tasksWithGroup: TaskWithGroup[] = tasks.map((t) => ({
+    ...t,
+    _group: getTaskGroup(t, today),
+  }));
+
   const groups = groupTasks(tasks);
   const openCount = groups.overdue.length + groups.today.length + groups.upcoming.length + groups.noDueDate.length;
 
+  const columns: ColumnDef<TaskWithGroup>[] = [
+    {
+      key: 'status',
+      header: '',
+      render: (t) => {
+        const isDone = t.status === 'done';
+        const overdue = t._group === 'overdue';
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); toggle(t); }}
+            disabled={toggling === t.id}
+            className={[
+              'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
+              isDone
+                ? 'border-green-500 bg-green-500 text-white'
+                : overdue
+                  ? 'border-orange-400 hover:bg-orange-400/20'
+                  : 'border-border/30 hover:border-primary',
+            ].join(' ')}
+          >
+            {isDone && <Check className="h-3 w-3" />}
+            {!isDone && toggling === t.id && <RotateCcw className="h-2.5 w-2.5 animate-spin text-text-secondary" />}
+          </button>
+        );
+      },
+      sortValue: (t) => (t.status === 'done' ? 1 : 0),
+    },
+    {
+      key: 'title',
+      header: 'Τίτλος',
+      render: (t) => {
+        const isDone = t.status === 'done';
+        const overdue = t._group === 'overdue';
+        return (
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`text-sm font-medium ${isDone ? 'line-through text-text-secondary' : 'text-text-primary'}`}>
+                {t.title}
+              </span>
+              {overdue && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400">
+                  <AlertCircle className="h-2.5 w-2.5" />
+                  Ληξιπρόθεσμη
+                </span>
+              )}
+            </div>
+            {t.description && (
+              <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">{t.description}</p>
+            )}
+          </div>
+        );
+      },
+      sortValue: (t) => t.title,
+    },
+    {
+      key: 'group',
+      header: 'Ομάδα',
+      render: (t) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${GROUP_COLORS[t._group]}`}>
+          {GROUP_LABELS[t._group]}
+        </span>
+      ),
+      sortValue: (t) => GROUP_ORDER[t._group],
+    },
+    {
+      key: 'due_date',
+      header: 'Προθεσμία',
+      render: (t) => {
+        if (t.status === 'done' && t.completed_at) {
+          return (
+            <span className="text-xs text-text-secondary">
+              ✓ {new Date(t.completed_at).toLocaleDateString('el-GR')}
+            </span>
+          );
+        }
+        if (!t.due_date) return <span className="text-text-secondary">—</span>;
+        return (
+          <span className={`text-xs ${t._group === 'overdue' ? 'text-orange-400' : 'text-text-secondary'}`}>
+            {new Date(t.due_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: 'long', year: 'numeric' })}
+          </span>
+        );
+      },
+      sortValue: (t) => t.due_date ?? (t.completed_at ?? ''),
+    },
+    {
+      key: 'case',
+      header: 'Υπόθεση',
+      render: (t) => {
+        if (!t.case_code) return <span className="text-text-secondary">—</span>;
+        return <CaseLink caseId={t.case_id!} code={t.case_code} title={t.case_title ?? ''} />;
+      },
+      sortValue: (t) => t.case_code ?? '',
+    },
+  ];
+
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
+    <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-text-primary">Εργασίες</h1>
@@ -65,172 +204,40 @@ export default function Tasks() {
 
       {loading ? (
         <p className="text-sm text-text-secondary">Φόρτωση…</p>
-      ) : openCount === 0 && groups.done.length === 0 ? (
+      ) : tasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-text-secondary">
           <CheckSquare className="h-10 w-10 mb-3 opacity-30" />
           <p className="text-sm">Δεν υπάρχουν εργασίες ακόμα.</p>
         </div>
       ) : (
-        <div className="space-y-6">
-          <TaskGroup
-            label="Ληξιπρόθεσμες"
-            tasks={groups.overdue}
-            variant="overdue"
-            toggling={toggling}
-            onToggle={toggle}
-          />
-          <TaskGroup
-            label="Σήμερα"
-            tasks={groups.today}
-            variant="today"
-            toggling={toggling}
-            onToggle={toggle}
-          />
-          <TaskGroup
-            label="Επερχόμενες"
-            tasks={groups.upcoming}
-            variant="normal"
-            toggling={toggling}
-            onToggle={toggle}
-          />
-          <TaskGroup
-            label="Χωρίς προθεσμία"
-            tasks={groups.noDueDate}
-            variant="normal"
-            toggling={toggling}
-            onToggle={toggle}
-          />
-
-          {groups.done.length > 0 && (
-            <div>
-              <button
-                onClick={() => setShowDone((v) => !v)}
-                className="text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-              >
-                {showDone ? '▾' : '▸'} Ολοκληρωμένες ({groups.done.length})
-              </button>
-              {showDone && (
-                <div className="mt-3 space-y-2">
-                  {groups.done.map((task) => (
-                    <TaskCard key={task.id} task={task} toggling={toggling} onToggle={toggle} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <DataTable
+          tableId="tasks"
+          columns={columns}
+          data={tasksWithGroup}
+          rowKey={(t) => t.id}
+          rowClassName={(t) => {
+            if (t.status === 'done') return 'opacity-50';
+            if (t._group === 'overdue') return 'bg-orange-500/5';
+            return '';
+          }}
+          emptyState={<span className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες.</span>}
+        />
       )}
     </div>
   );
 }
 
-// ── Task group ────────────────────────────────────────────────────────────────
+// ── Case link cell helper ─────────────────────────────────────────────────────
 
-type GroupProps = {
-  label: string;
-  tasks: Task[];
-  variant: 'overdue' | 'today' | 'normal';
-  toggling: string | null;
-  onToggle: (t: Task) => void;
-};
-
-function TaskGroup({ label, tasks, variant, toggling, onToggle }: GroupProps) {
-  if (tasks.length === 0) return null;
-
-  const labelColor =
-    variant === 'overdue' ? 'text-orange-400' :
-    variant === 'today' ? 'text-primary' :
-    'text-text-primary';
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        {variant === 'overdue' && <AlertCircle className="h-4 w-4 text-orange-400" />}
-        <h2 className={`text-sm font-semibold ${labelColor}`}>{label} ({tasks.length})</h2>
-      </div>
-      <div className="space-y-2">
-        {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} toggling={toggling} onToggle={onToggle} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Task card ────────────────────────────────────────────────────────────────
-
-type CardProps = { task: Task; toggling: string | null; onToggle: (t: Task) => void };
-
-function TaskCard({ task, toggling, onToggle }: CardProps) {
+function CaseLink({ caseId, code, title }: { caseId: string; code: string; title: string }) {
   const navigate = useNavigate();
-  const today = new Date().toISOString().slice(0, 10);
-  const overdue = task.status === 'open' && !!task.due_date && task.due_date < today;
-  const isDone = task.status === 'done';
-
   return (
-    <div className={[
-      'rounded-xl border p-4 flex items-start gap-3 transition-colors',
-      isDone
-        ? 'border-border/10 bg-secondary-background opacity-50'
-        : overdue
-          ? 'border-orange-500/20 bg-orange-500/5'
-          : 'border-border/10 bg-secondary-background',
-    ].join(' ')}>
-      <button
-        onClick={() => onToggle(task)}
-        disabled={toggling === task.id}
-        className={[
-          'mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
-          isDone
-            ? 'border-green-500 bg-green-500 text-white'
-            : overdue
-              ? 'border-orange-400 hover:bg-orange-400/20'
-              : 'border-border/30 hover:border-primary',
-        ].join(' ')}
-      >
-        {isDone && <Check className="h-3 w-3" />}
-        {!isDone && toggling === task.id && <RotateCcw className="h-2.5 w-2.5 animate-spin text-text-secondary" />}
-      </button>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`text-sm font-medium ${isDone ? 'line-through text-text-secondary' : 'text-text-primary'}`}>
-            {task.title}
-          </span>
-          {overdue && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400">
-              <AlertCircle className="h-2.5 w-2.5" />
-              Ληξιπρόθεσμη
-            </span>
-          )}
-        </div>
-
-        {task.description && (
-          <p className="text-xs text-text-secondary mt-0.5">{task.description}</p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3 mt-1">
-          {task.due_date && (
-            <span className={`text-xs ${overdue ? 'text-orange-400' : 'text-text-secondary'}`}>
-              {new Date(task.due_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: 'long', year: 'numeric' })}
-            </span>
-          )}
-          {task.case_code && (
-            <button
-              onClick={() => navigate(`/cases/${task.case_id}`)}
-              className="text-xs text-primary hover:underline cursor-pointer"
-            >
-              {task.case_code} — {task.case_title}
-            </button>
-          )}
-          {isDone && task.completed_at && (
-            <span className="text-xs text-text-secondary">
-              Ολοκληρώθηκε {new Date(task.completed_at).toLocaleDateString('el-GR')}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
+    <button
+      onClick={(e) => { e.stopPropagation(); navigate(`/cases/${caseId}`); }}
+      className="text-xs text-primary hover:underline cursor-pointer"
+    >
+      {code} — {title}
+    </button>
   );
 }
 
@@ -243,7 +250,6 @@ function NewTaskForm({ tenantId, onCreated, onCancel }: FormProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Case search
   const [caseQuery, setCaseQuery] = useState('');
   const [caseOptions, setCaseOptions] = useState<{ id: string; code: string; title: string }[]>([]);
   const [selectedCase, setSelectedCase] = useState<{ id: string; code: string; title: string } | null>(null);

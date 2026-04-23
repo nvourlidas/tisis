@@ -239,7 +239,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
                       <input
-                        className="input w-full pl-9"
+                        className="input w-full pl-9!"
                         placeholder="Αναζήτηση κωδικού ή τίτλου…"
                         value={caseQuery}
                         onChange={(e) => setCaseQuery(e.target.value)}

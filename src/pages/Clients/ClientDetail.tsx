@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, FileText, Pencil, Check, X } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Phone, Mail, MapPin, FileText, Pencil, Check, X, Plus, Search } from 'lucide-react';
 import { fetchClient, updateClient } from './clientUtils';
+import { createCase } from '../Cases/caseUtils';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth';
 import type { Client } from './types';
+import type { CaseFormData } from '../Cases/types';
+import DataTable, { type ColumnDef } from '../../components/DataTable';
+import NewCaseModal from '../Cases/modals/NewCaseModal';
 
-type CaseSummary = { id: string; code: string; title: string; status: string };
+type CaseSummary = { id: string; code: string; title: string; status: string; next_critical_date: string | null };
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Ενεργή',
@@ -19,9 +24,49 @@ const STATUS_COLORS: Record<string, string> = {
   closed: 'bg-border/20 text-text-secondary',
 };
 
+const CASE_COLUMNS: ColumnDef<CaseSummary>[] = [
+  {
+    key: 'code',
+    header: 'Κωδικός',
+    render: (c) => <span className="font-mono text-xs text-text-secondary">{c.code}</span>,
+    sortValue: (c) => c.code,
+  },
+  {
+    key: 'title',
+    header: 'Τίτλος',
+    render: (c) => <span className="text-text-primary">{c.title}</span>,
+    sortValue: (c) => c.title,
+  },
+  {
+    key: 'status',
+    header: 'Κατάσταση',
+    render: (c) => (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[c.status] ?? 'bg-border/20 text-text-secondary'}`}>
+        {STATUS_LABELS[c.status] ?? c.status}
+      </span>
+    ),
+    sortValue: (c) => c.status,
+  },
+  {
+    key: 'next_critical_date',
+    header: 'Επόμενη Ημ/νία',
+    render: (c) => (
+      <span className="text-text-secondary text-xs">
+        {c.next_critical_date
+          ? new Date(c.next_critical_date + 'T00:00:00').toLocaleDateString('el-GR')
+          : '—'}
+      </span>
+    ),
+    sortValue: (c) => c.next_critical_date ?? '',
+    defaultVisible: false,
+  },
+];
+
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const tenantId = profile?.tenant_id ?? '';
 
   const [client, setClient] = useState<Client | null>(null);
   const [cases, setCases] = useState<CaseSummary[]>([]);
@@ -30,19 +75,36 @@ export default function ClientDetail() {
   const [form, setForm] = useState<Partial<Client>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [caseSearch, setCaseSearch] = useState('');
+  const [showNewCase, setShowNewCase] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     Promise.all([
       fetchClient(id),
-      supabase.from('cases').select('id, code, title, status').eq('client_id', id).order('created_at', { ascending: false }),
+      supabase.from('cases').select('id, code, title, status, next_critical_date').eq('client_id', id).order('created_at', { ascending: false }),
     ]).then(([c, { data: caseData }]) => {
       setClient(c);
       setForm(c ?? {});
       setCases(caseData ?? []);
     }).finally(() => setLoading(false));
   }, [id]);
+
+  const filteredCases = useMemo(() => {
+    const q = caseSearch.trim().toLowerCase();
+    if (!q) return cases;
+    return cases.filter((c) => c.code.toLowerCase().includes(q) || c.title.toLowerCase().includes(q));
+  }, [cases, caseSearch]);
+
+  const handleNewCase = async (data: CaseFormData) => {
+    const created = await createCase(tenantId, data);
+    const { data: caseData } = await supabase
+      .from('cases').select('id, code, title, status, next_critical_date')
+      .eq('client_id', id).order('created_at', { ascending: false });
+    setCases(caseData ?? []);
+    navigate(`/cases/${created.id}`);
+  };
 
   const startEdit = () => { setForm(client ?? {}); setEditing(true); setError(null); };
   const cancelEdit = () => { setEditing(false); setError(null); };
@@ -73,7 +135,7 @@ export default function ClientDetail() {
   if (!client) return <div className="p-6 text-sm text-text-secondary">Ο πελάτης δεν βρέθηκε.</div>;
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
+    <div className="p-6 space-y-6">
       <button onClick={() => navigate('/clients')} className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
         <ArrowLeft className="h-4 w-4" />
         Πελάτες
@@ -139,40 +201,49 @@ export default function ClientDetail() {
         )}
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-3">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
           <h2 className="text-sm font-semibold text-text-primary">Υποθέσεις ({cases.length})</h2>
-          <Link to={`/cases?client=${id}`} className="text-xs text-primary hover:underline">Προβολή όλων</Link>
+          <button
+            onClick={() => setShowNewCase(true)}
+            className="btn-primary inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            Νέα Υπόθεση
+          </button>
         </div>
-        {cases.length === 0 ? (
-          <p className="text-sm text-text-secondary">Δεν υπάρχουν υποθέσεις ακόμα.</p>
-        ) : (
-          <div className="rounded-xl border border-border/10 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-white/3 border-b border-border/10 text-text-secondary text-xs uppercase tracking-wider">
-                  <th className="text-left px-4 py-2.5 font-medium">Κωδικός</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Τίτλος</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Κατάσταση</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/10">
-                {cases.map((c) => (
-                  <tr key={c.id} onClick={() => navigate(`/cases/${c.id}`)} className="hover:bg-white/3 cursor-pointer transition-colors">
-                    <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{c.code}</td>
-                    <td className="px-4 py-2.5 text-text-primary">{c.title}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[c.status] ?? 'bg-border/20 text-text-secondary'}`}>
-                        {STATUS_LABELS[c.status] ?? c.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
+          <input
+            className="input w-full pl-9!"
+            placeholder="Αναζήτηση με κωδικό ή τίτλο…"
+            value={caseSearch}
+            onChange={(e) => setCaseSearch(e.target.value)}
+          />
+        </div>
+
+        <DataTable
+          tableId="client-detail-cases"
+          columns={CASE_COLUMNS}
+          data={filteredCases}
+          rowKey={(c) => c.id}
+          onRowClick={(c) => navigate(`/cases/${c.id}`)}
+          emptyState={
+            <p className="text-sm text-text-secondary">
+              {caseSearch ? 'Δεν βρέθηκαν υποθέσεις.' : 'Δεν υπάρχουν υποθέσεις ακόμα.'}
+            </p>
+          }
+        />
       </div>
+
+      <NewCaseModal
+        open={showNewCase}
+        onClose={() => setShowNewCase(false)}
+        onSubmit={handleNewCase}
+        tenantId={tenantId}
+        defaultClientId={id}
+      />
     </div>
   );
 }

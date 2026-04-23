@@ -70,7 +70,7 @@ export default function Dashboard() {
   const unlinkedCalls = calls.filter((c) => !c.case_id);
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
+    <div className="p-6 space-y-6">
       {/* Header + CTA */}
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-bold text-text-primary">Πίνακας Ελέγχου</h1>

@@ -104,7 +104,7 @@ export default function UsersSettings() {
   const isExpired = (expires_at: string) => new Date(expires_at) < new Date();
 
   return (
-    <div className="p-6 max-w-2xl space-y-8">
+    <div className="p-6 space-y-8">
       <div>
         <h1 className="text-xl font-bold text-text-primary">Ομάδα</h1>
         <p className="text-sm text-text-secondary mt-0.5">Διαχείριση χρηστών που έχουν πρόσβαση στο σύστημα.</p>

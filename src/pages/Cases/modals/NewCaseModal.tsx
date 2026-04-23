@@ -9,6 +9,7 @@ type Props = {
   onClose: () => void;
   onSubmit: (data: CaseFormData) => Promise<void>;
   tenantId: string;
+  defaultClientId?: string;
 };
 
 const empty: CaseFormData = {
@@ -16,15 +17,18 @@ const empty: CaseFormData = {
   stage: '', description: '', next_critical_date: '', google_drive_url: '', notes: '',
 };
 
-export default function NewCaseModal({ open, onClose, onSubmit, tenantId }: Props) {
-  const [form, setForm] = useState<CaseFormData>(empty);
+export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaultClientId }: Props) {
+  const [form, setForm] = useState<CaseFormData>({ ...empty, client_id: defaultClientId ?? '' });
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open && tenantId) fetchClients(tenantId).then(setClients);
-  }, [open, tenantId]);
+    if (open) {
+      setForm({ ...empty, client_id: defaultClientId ?? '' });
+      if (tenantId && !defaultClientId) fetchClients(tenantId).then(setClients);
+    }
+  }, [open, tenantId, defaultClientId]);
 
   if (!open) return null;
 
@@ -91,15 +95,17 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId }: Prop
             <input className="input w-full" value={form.title} onChange={set('title')} required />
           </div>
 
-          <div>
-            <label className="block text-sm text-text-secondary mb-1">Πελάτης</label>
-            <select className="input w-full" value={form.client_id} onChange={set('client_id')}>
-              <option value="">— Χωρίς πελάτη —</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
+          {!defaultClientId && (
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Πελάτης</label>
+              <select className="input w-full" value={form.client_id} onChange={set('client_id')}>
+                <option value="">— Χωρίς πελάτη —</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm text-text-secondary mb-1">Επόμενη Κρίσιμη Ημερομηνία</label>
