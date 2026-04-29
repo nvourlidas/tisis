@@ -1,57 +1,56 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckSquare, Plus, Check, RotateCcw, AlertCircle, Search, X } from 'lucide-react';
+import {
+  Plus, Check, RotateCcw, AlertCircle,
+  X, ChevronLeft, ChevronRight, Pencil,
+} from 'lucide-react';
 import { useAuth } from '../../auth';
-import { fetchAllTasks, completeTask, reopenTask, createTask, groupTasks } from './taskUtils';
-import { searchCasesForCall } from '../Calls/callUtils';
-import type { Task } from './taskUtils';
-import DataTable, { type ColumnDef } from '../../components/DataTable';
+import {
+  fetchAllTasks, completeTask, reopenTask, createTask, updateTask, groupTasks,
+  TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData, type TaskExpense,
+} from './taskUtils';
+import TaskForm, { type TaskFormValues, taskToFormValues } from './TaskForm';
 
-type TaskGroup = 'overdue' | 'today' | 'upcoming' | 'noDueDate' | 'done';
+const MONTH_NAMES = [
+  'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος',
+  'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος',
+];
+const DAY_NAMES = ['Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ', 'Κυρ'];
 
-const GROUP_LABELS: Record<TaskGroup, string> = {
-  overdue: 'Ληξιπρόθεσμη',
-  today: 'Σήμερα',
-  upcoming: 'Επερχόμενη',
-  noDueDate: 'Χωρίς προθεσμία',
-  done: 'Ολοκληρωμένη',
-};
-
-const GROUP_COLORS: Record<TaskGroup, string> = {
-  overdue: 'bg-orange-500/15 text-orange-400',
-  today: 'bg-primary/15 text-primary',
-  upcoming: 'bg-border/20 text-text-secondary',
-  noDueDate: 'bg-border/20 text-text-secondary',
-  done: 'bg-green-500/15 text-green-400',
-};
-
-function getTaskGroup(task: Task, today: string): TaskGroup {
-  if (task.status === 'done') return 'done';
-  if (!task.due_date) return 'noDueDate';
-  if (task.due_date < today) return 'overdue';
-  if (task.due_date === today) return 'today';
-  return 'upcoming';
-}
-
-// Attach group info to tasks for display + sorting
-type TaskWithGroup = Task & { _group: TaskGroup };
-
-const GROUP_ORDER: Record<TaskGroup, number> = {
-  overdue: 0,
-  today: 1,
-  upcoming: 2,
-  noDueDate: 3,
-  done: 4,
+const CATEGORY_COLORS: Record<TaskCategory, string> = {
+  legal_act: 'bg-blue-500/15 text-blue-400',
+  extrajudicial: 'bg-purple-500/15 text-purple-400',
+  appointment: 'bg-teal-500/15 text-teal-400',
+  file_work: 'bg-amber-500/15 text-amber-400',
 };
 
 export default function Tasks() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const tenantId = profile?.tenant_id ?? '';
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Filters
+  const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
+  const [authorityFilter, setAuthorityFilter] = useState('');
+  const [gakFilter, setGakFilter] = useState('');
+  const [ekaFilter, setEkaFilter] = useState('');
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayDate = new Date(todayStr + 'T00:00:00');
+
+  const [year, setYear] = useState(todayDate.getFullYear());
+  const [month, setMonth] = useState(todayDate.getMonth());
+  const [selectedDay, setSelectedDay] = useState<string | null>(todayStr);
 
   const load = () => {
     if (!tenantId) return;
@@ -72,110 +71,111 @@ export default function Tasks() {
     }
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const handleCreate = async (values: TaskFormValues) => {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await createTask(tenantId, {
+        title: values.title,
+        description: values.description,
+        due_date: values.due_date,
+        case_id: values.case_id,
+        category: values.category || undefined,
+        extra_data: values.extra_data,
+        fee: values.fee,
+        expenses: values.expenses,
+      });
+      setShowCreate(false);
+      load();
+    } catch (err: any) {
+      setCreateError(err?.message ?? 'Αποτυχία δημιουργίας εργασίας.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
-  const tasksWithGroup: TaskWithGroup[] = tasks.map((t) => ({
-    ...t,
-    _group: getTaskGroup(t, today),
-  }));
+  const handleUpdate = async (values: TaskFormValues) => {
+    if (!editingTask) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateTask({
+        id: editingTask.id,
+        title: values.title,
+        description: values.description,
+        due_date: values.due_date,
+        category: values.category || undefined,
+        extra_data: values.extra_data,
+        fee: values.fee,
+        expenses: values.expenses,
+      });
+      setEditingTask(null);
+      load();
+    } catch (err: any) {
+      setSaveError(err?.message ?? 'Αποτυχία αποθήκευσης.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const groups = groupTasks(tasks);
+  const prevMonth = () => {
+    if (month === 0) { setYear(y => y - 1); setMonth(11); }
+    else setMonth(m => m - 1);
+    setSelectedDay(null);
+  };
+  const nextMonth = () => {
+    if (month === 11) { setYear(y => y + 1); setMonth(0); }
+    else setMonth(m => m + 1);
+    setSelectedDay(null);
+  };
+  const goToday = () => {
+    setYear(todayDate.getFullYear());
+    setMonth(todayDate.getMonth());
+    setSelectedDay(todayStr);
+  };
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(t => {
+      if (categoryFilter && t.category !== categoryFilter) return false;
+      if (categoryFilter === 'legal_act' && t.extra_data) {
+        const d = t.extra_data as LegalActData;
+        if (authorityFilter && !d.authority?.toLowerCase().includes(authorityFilter.toLowerCase())) return false;
+        if (gakFilter && !d.gak?.toLowerCase().includes(gakFilter.toLowerCase())) return false;
+        if (ekaFilter && !d.eka?.toLowerCase().includes(ekaFilter.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [tasks, categoryFilter, authorityFilter, gakFilter, ekaFilter]);
+
+  const tasksByDay = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const t of filteredTasks) {
+      if (!t.due_date) continue;
+      if (!map.has(t.due_date)) map.set(t.due_date, []);
+      map.get(t.due_date)!.push(t);
+    }
+    return map;
+  }, [filteredTasks]);
+
+  const noDueDateTasks = useMemo(() => filteredTasks.filter(t => !t.due_date && t.status === 'open'), [filteredTasks]);
+
+  const firstDay = new Date(year, month, 1);
+  const startDow = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7;
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < totalCells; i++) {
+    const d = i - startDow + 1;
+    cells.push(d >= 1 && d <= daysInMonth ? d : null);
+  }
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dayStr = (d: number) => `${year}-${pad(month + 1)}-${pad(d)}`;
+
+  const selectedTasks = selectedDay ? (tasksByDay.get(selectedDay) ?? []) : [];
+
+  const groups = groupTasks(filteredTasks);
   const openCount = groups.overdue.length + groups.today.length + groups.upcoming.length + groups.noDueDate.length;
-
-  const columns: ColumnDef<TaskWithGroup>[] = [
-    {
-      key: 'status',
-      header: '',
-      render: (t) => {
-        const isDone = t.status === 'done';
-        const overdue = t._group === 'overdue';
-        return (
-          <button
-            onClick={(e) => { e.stopPropagation(); toggle(t); }}
-            disabled={toggling === t.id}
-            className={[
-              'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
-              isDone
-                ? 'border-green-500 bg-green-500 text-white'
-                : overdue
-                  ? 'border-orange-400 hover:bg-orange-400/20'
-                  : 'border-border/30 hover:border-primary',
-            ].join(' ')}
-          >
-            {isDone && <Check className="h-3 w-3" />}
-            {!isDone && toggling === t.id && <RotateCcw className="h-2.5 w-2.5 animate-spin text-text-secondary" />}
-          </button>
-        );
-      },
-      sortValue: (t) => (t.status === 'done' ? 1 : 0),
-    },
-    {
-      key: 'title',
-      header: 'Τίτλος',
-      render: (t) => {
-        const isDone = t.status === 'done';
-        const overdue = t._group === 'overdue';
-        return (
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`text-sm font-medium ${isDone ? 'line-through text-text-secondary' : 'text-text-primary'}`}>
-                {t.title}
-              </span>
-              {overdue && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400">
-                  <AlertCircle className="h-2.5 w-2.5" />
-                  Ληξιπρόθεσμη
-                </span>
-              )}
-            </div>
-            {t.description && (
-              <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">{t.description}</p>
-            )}
-          </div>
-        );
-      },
-      sortValue: (t) => t.title,
-    },
-    {
-      key: 'group',
-      header: 'Ομάδα',
-      render: (t) => (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${GROUP_COLORS[t._group]}`}>
-          {GROUP_LABELS[t._group]}
-        </span>
-      ),
-      sortValue: (t) => GROUP_ORDER[t._group],
-    },
-    {
-      key: 'due_date',
-      header: 'Προθεσμία',
-      render: (t) => {
-        if (t.status === 'done' && t.completed_at) {
-          return (
-            <span className="text-xs text-text-secondary">
-              ✓ {new Date(t.completed_at).toLocaleDateString('el-GR')}
-            </span>
-          );
-        }
-        if (!t.due_date) return <span className="text-text-secondary">—</span>;
-        return (
-          <span className={`text-xs ${t._group === 'overdue' ? 'text-orange-400' : 'text-text-secondary'}`}>
-            {new Date(t.due_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: 'long', year: 'numeric' })}
-          </span>
-        );
-      },
-      sortValue: (t) => t.due_date ?? (t.completed_at ?? ''),
-    },
-    {
-      key: 'case',
-      header: 'Υπόθεση',
-      render: (t) => {
-        if (!t.case_code) return <span className="text-text-secondary">—</span>;
-        return <CaseLink caseId={t.case_id!} code={t.case_code} title={t.case_title ?? ''} />;
-      },
-      sortValue: (t) => t.case_code ?? '',
-    },
-  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -188,214 +188,307 @@ export default function Tasks() {
             </p>
           )}
         </div>
-        <button onClick={() => setShowCreate(true)} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
+        <button onClick={() => { setShowCreate(true); setEditingTask(null); }} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
           <Plus className="h-4 w-4" />
           Νέα Εργασία
         </button>
       </div>
 
       {showCreate && (
-        <NewTaskForm
-          tenantId={tenantId}
-          onCreated={() => { setShowCreate(false); load(); }}
-          onCancel={() => setShowCreate(false)}
-        />
+        <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-text-primary">Νέα Εργασία</h3>
+            <button type="button" onClick={() => setShowCreate(false)} className="h-6 w-6 flex items-center justify-center rounded hover:bg-border/10 text-text-secondary cursor-pointer">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <TaskForm
+            tenantId={tenantId}
+            saving={creating}
+            error={createError}
+            onSubmit={handleCreate}
+            onCancel={() => setShowCreate(false)}
+          />
+        </div>
+      )}
+
+      <EditTaskModal
+        task={editingTask}
+        tenantId={tenantId}
+        saving={saving}
+        error={saveError}
+        onSubmit={handleUpdate}
+        onClose={() => { setEditingTask(null); setSaveError(null); }}
+      />
+
+      {/* Category filter */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => { setCategoryFilter(null); setAuthorityFilter(''); setGakFilter(''); setEkaFilter(''); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${!categoryFilter ? 'bg-primary text-white' : 'bg-white/5 text-text-secondary hover:bg-white/10'}`}
+        >
+          Όλες
+        </button>
+        {(Object.keys(TASK_CATEGORIES) as TaskCategory[]).map(cat => (
+          <button
+            key={cat}
+            onClick={() => { setCategoryFilter(c => c === cat ? null : cat); setAuthorityFilter(''); setGakFilter(''); setEkaFilter(''); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${categoryFilter === cat ? 'bg-primary text-white' : 'bg-white/5 text-text-secondary hover:bg-white/10'}`}
+          >
+            {TASK_CATEGORIES[cat]}
+          </button>
+        ))}
+      </div>
+
+      {categoryFilter === 'legal_act' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Αρμόδια Αρχή</label>
+            <input className="input w-full text-sm" placeholder="Φίλτρο…" value={authorityFilter} onChange={e => setAuthorityFilter(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">ΓΑΚ</label>
+            <input className="input w-full text-sm" placeholder="Φίλτρο…" value={gakFilter} onChange={e => setGakFilter(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">ΕΚΑ</label>
+            <input className="input w-full text-sm" placeholder="Φίλτρο…" value={ekaFilter} onChange={e => setEkaFilter(e.target.value)} />
+          </div>
+        </div>
       )}
 
       {loading ? (
         <p className="text-sm text-text-secondary">Φόρτωση…</p>
-      ) : tasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-text-secondary">
-          <CheckSquare className="h-10 w-10 mb-3 opacity-30" />
-          <p className="text-sm">Δεν υπάρχουν εργασίες ακόμα.</p>
-        </div>
       ) : (
-        <DataTable
-          tableId="tasks"
-          columns={columns}
-          data={tasksWithGroup}
-          rowKey={(t) => t.id}
-          rowClassName={(t) => {
-            if (t.status === 'done') return 'opacity-50';
-            if (t._group === 'overdue') return 'bg-orange-500/5';
-            return '';
-          }}
-          emptyState={<span className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες.</span>}
-        />
+        <div className="space-y-5">
+          <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-text-primary">{MONTH_NAMES[month]} {year}</h2>
+              <div className="flex items-center gap-1">
+                <button onClick={goToday} className="px-2 py-1 text-xs text-primary hover:underline cursor-pointer">Σήμερα</button>
+                <button onClick={prevMonth} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
+                <button onClick={nextMonth} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-7 gap-px">
+              {DAY_NAMES.map(d => (
+                <div key={d} className="text-center text-[10px] font-semibold text-text-secondary uppercase tracking-wide py-1">{d}</div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-px">
+              {cells.map((day, i) => {
+                if (!day) return <div key={`empty-${i}`} />;
+                const ds = dayStr(day);
+                const dayTasks = tasksByDay.get(ds) ?? [];
+                const isToday = ds === todayStr;
+                const isSelected = ds === selectedDay;
+                return (
+                  <button key={ds} onClick={() => setSelectedDay(isSelected ? null : ds)}
+                    className={['relative min-h-16 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1',
+                      isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
+                      isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}>
+                    <span className={['text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0',
+                      isToday ? 'bg-primary text-white' : 'text-text-secondary'].join(' ')}>{day}</span>
+                    <div className="flex flex-col gap-0.5 overflow-hidden w-full">
+                      {dayTasks.slice(0, 3).map(task => {
+                        const overdue = task.status === 'open' && ds < todayStr;
+                        const done = task.status === 'done';
+                        return (
+                          <span key={task.id} className={['text-[10px] leading-tight px-1 rounded truncate w-full',
+                            done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
+                            overdue ? 'bg-orange-500/15 text-orange-400' :
+                            task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
+                            {task.title}
+                          </span>
+                        );
+                      })}
+                      {dayTasks.length > 3 && <span className="text-[10px] text-text-secondary px-1">+{dayTasks.length - 3} ακόμα</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedDay && (
+              <div className="border-t border-border/10 pt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-text-primary">
+                    {new Date(selectedDay + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </h3>
+                  <button onClick={() => setSelectedDay(null)} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {selectedTasks.length === 0 ? (
+                  <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedTasks.map(task => (
+                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
+                        onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {noDueDateTasks.length > 0 && (
+            <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-3">
+              <h2 className="text-sm font-semibold text-text-secondary">Χωρίς προθεσμία ({noDueDateTasks.length})</h2>
+              <div className="space-y-2">
+                {noDueDateTasks.map(task => (
+                  <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
+                    onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-// ── Case link cell helper ─────────────────────────────────────────────────────
+// ── Edit task modal ───────────────────────────────────────────────────────────
 
-function CaseLink({ caseId, code, title }: { caseId: string; code: string; title: string }) {
-  const navigate = useNavigate();
+function EditTaskModal({ task, tenantId, saving, error, onSubmit, onClose }: {
+  task: Task | null;
+  tenantId: string;
+  saving: boolean;
+  error: string | null;
+  onSubmit: (v: TaskFormValues) => void;
+  onClose: () => void;
+}) {
+  if (!task) return null;
   return (
-    <button
-      onClick={(e) => { e.stopPropagation(); navigate(`/cases/${caseId}`); }}
-      className="text-xs text-primary hover:underline cursor-pointer"
-    >
-      {code} — {title}
-    </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border/20 bg-secondary-background shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between bg-secondary-background px-6 py-4 border-b border-border/10">
+          <h2 className="text-sm font-semibold text-text-primary">Επεξεργασία Εργασίας</h2>
+          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 text-text-secondary cursor-pointer">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-6">
+          <TaskForm
+            tenantId={tenantId}
+            initial={{ ...taskToFormValues(task), case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined }}
+            saving={saving}
+            error={error}
+            onSubmit={onSubmit}
+            onCancel={onClose}
+            submitLabel="Αποθήκευση"
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ── New task form ─────────────────────────────────────────────────────────────
+// ── Task row ──────────────────────────────────────────────────────────────────
 
-type FormProps = { tenantId: string; onCreated: () => void; onCancel: () => void };
+function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
+  task: Task;
+  todayStr: string;
+  toggling: string | null;
+  onToggle: (t: Task) => void;
+  onEdit: (t: Task) => void;
+  onNavigate: ReturnType<typeof useNavigate>;
+}) {
+  const overdue = task.status === 'open' && !!task.due_date && task.due_date < todayStr;
+  const done = task.status === 'done';
 
-function NewTaskForm({ tenantId, onCreated, onCancel }: FormProps) {
-  const [form, setForm] = useState({ title: '', description: '', due_date: '', case_id: '' });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [caseQuery, setCaseQuery] = useState('');
-  const [caseOptions, setCaseOptions] = useState<{ id: string; code: string; title: string }[]>([]);
-  const [selectedCase, setSelectedCase] = useState<{ id: string; code: string; title: string } | null>(null);
-  const [searchingCases, setSearchingCases] = useState(false);
-  const [showCaseSearch, setShowCaseSearch] = useState(false);
-
-  useEffect(() => {
-    if (!caseQuery.trim() || !tenantId) { setCaseOptions([]); return; }
-    const t = setTimeout(async () => {
-      setSearchingCases(true);
-      const results = await searchCasesForCall(tenantId, caseQuery.trim());
-      setCaseOptions(results);
-      setSearchingCases(false);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [caseQuery, tenantId]);
-
-  const selectCase = (c: { id: string; code: string; title: string }) => {
-    setSelectedCase(c);
-    setForm((f) => ({ ...f, case_id: c.id }));
-    setShowCaseSearch(false);
-    setCaseQuery('');
-    setCaseOptions([]);
-  };
-
-  const clearCase = () => {
-    setSelectedCase(null);
-    setForm((f) => ({ ...f, case_id: '' }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.title.trim()) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await createTask(tenantId, form);
-      onCreated();
-    } catch (err: any) {
-      setError(err?.message ?? 'Αποτυχία δημιουργίας εργασίας.');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const totalExpenses = task.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
+  const hasFinancials = task.fee != null || (task.expenses?.length ?? 0) > 0;
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-text-primary">Νέα Εργασία</h3>
-        <button type="button" onClick={onCancel} className="h-6 w-6 flex items-center justify-center rounded hover:bg-border/10 text-text-secondary cursor-pointer">
-          <X className="h-4 w-4" />
+    <div className={`rounded-xl border px-4 py-3 space-y-2 ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
+      <div className="flex items-start gap-3">
+        <button
+          onClick={() => onToggle(task)}
+          disabled={toggling === task.id}
+          className={['mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
+            done ? 'border-green-500 bg-green-500 text-white' :
+            overdue ? 'border-orange-400 hover:bg-orange-400/20' :
+            'border-border/30 hover:border-primary'].join(' ')}
+        >
+          {done && <Check className="h-3 w-3" />}
+          {!done && toggling === task.id && <RotateCcw className="h-2.5 w-2.5 animate-spin text-text-secondary" />}
         </button>
-      </div>
-
-      <div>
-        <label className="block text-xs text-text-secondary mb-1">Τίτλος <span className="text-danger">*</span></label>
-        <input
-          className="input w-full"
-          value={form.title}
-          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          required
-          autoFocus
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">Προθεσμία</label>
-          <input
-            type="date"
-            className="input w-full"
-            value={form.due_date}
-            onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">Υπόθεση</label>
-          {selectedCase ? (
-            <div className="flex items-center gap-2 input">
-              <span className="font-mono text-xs text-text-secondary">{selectedCase.code}</span>
-              <span className="text-sm text-text-primary flex-1 truncate">{selectedCase.title}</span>
-              <button type="button" onClick={clearCase} className="text-text-secondary hover:text-danger cursor-pointer shrink-0">
-                <X className="h-3.5 w-3.5" />
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium ${done ? 'line-through text-text-secondary' : 'text-text-primary'}`}>{task.title}</p>
+          {task.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{task.description}</p>}
+          <ExtraDataSummary task={task} />
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            {task.case_code && (
+              <button onClick={() => task.case_id && onNavigate(`/cases/${task.case_id}`)}
+                className="text-xs text-primary hover:underline cursor-pointer font-mono">
+                {task.case_code} — {task.case_title}
               </button>
-            </div>
-          ) : (
-            <div>
-              {!showCaseSearch ? (
-                <button
-                  type="button"
-                  onClick={() => setShowCaseSearch(true)}
-                  className="w-full flex items-center gap-2 input text-text-secondary hover:text-text-primary cursor-pointer"
-                >
-                  <Search className="h-3.5 w-3.5 shrink-0" />
-                  <span className="text-sm">Επιλογή υπόθεσης</span>
-                </button>
-              ) : (
-                <input
-                  className="input w-full"
-                  placeholder="Αναζήτηση…"
-                  value={caseQuery}
-                  onChange={(e) => setCaseQuery(e.target.value)}
-                  autoFocus
-                  onBlur={() => { if (!caseQuery.trim()) setShowCaseSearch(false); }}
-                />
-              )}
-            </div>
+            )}
+            {task.category && (
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${CATEGORY_COLORS[task.category]}`}>
+                {TASK_CATEGORIES[task.category]}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {overdue && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/15 text-orange-400">
+              <AlertCircle className="h-2.5 w-2.5" />
+              Ληξ/θεσμη
+            </span>
+          )}
+          <button
+            onClick={() => onEdit(task)}
+            className="p-1 rounded hover:bg-white/5 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      {hasFinancials && (
+        <div className="flex flex-wrap gap-3 pl-8 text-xs text-green-400">
+          {task.fee != null && task.fee > 0 && (
+            <span>Αμοιβή: <strong>{task.fee.toFixed(2)} €</strong></span>
+          )}
+          {(task.expenses?.length ?? 0) > 0 && (
+            <span className="text-red-400">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({task.expenses!.length})</span>
           )}
         </div>
-      </div>
-
-      {showCaseSearch && caseOptions.length > 0 && (
-        <div className="rounded-lg border border-border/10 overflow-hidden divide-y divide-border/10 -mt-2">
-          {searchingCases && <p className="px-3 py-2 text-xs text-text-secondary">Αναζήτηση…</p>}
-          {caseOptions.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => selectCase(c)}
-              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 cursor-pointer transition-colors text-left"
-            >
-              <span className="font-mono text-xs text-text-secondary shrink-0">{c.code}</span>
-              <span className="text-sm text-text-primary truncate">{c.title}</span>
-            </button>
-          ))}
-        </div>
       )}
-
-      <div>
-        <label className="block text-xs text-text-secondary mb-1">Περιγραφή</label>
-        <textarea
-          className="input w-full resize-none"
-          rows={2}
-          value={form.description}
-          onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-        />
-      </div>
-
-      {error && <p className="text-sm text-danger">{error}</p>}
-
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="btn-secondary cursor-pointer">Ακύρωση</button>
-        <button type="submit" disabled={saving} className="btn-primary cursor-pointer">
-          {saving ? 'Αποθήκευση…' : 'Δημιουργία'}
-        </button>
-      </div>
-    </form>
+    </div>
   );
+}
+
+function ExtraDataSummary({ task }: { task: Task }) {
+  const lines: React.ReactNode[] = [];
+
+  if (task.category && task.extra_data) {
+    if (task.category === 'legal_act') {
+      const d = task.extra_data as LegalActData;
+      const parts = [
+        d.authority && `Αρχή: ${d.authority}`,
+        d.gak && `ΓΑΚ: ${d.gak}`,
+        d.eka && `ΕΚΑ: ${d.eka}`,
+        d.protocol_number && `Αρ. Πρωτ.: ${d.protocol_number}`,
+      ].filter(Boolean);
+      if (parts.length) lines.push(<span key="legal">{parts.join(' · ')}</span>);
+    } else if (task.category === 'appointment') {
+      const d = task.extra_data as AppointmentData;
+      if (d.start_datetime) {
+        const start = new Date(d.start_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const end = d.end_datetime ? ' – ' + new Date(d.end_datetime).toLocaleString('el-GR', { hour: '2-digit', minute: '2-digit' }) : '';
+        lines.push(<span key="appt">{start}{end}</span>);
+      }
+    }
+  }
+
+  if (!lines.length) return null;
+  return <div className="text-xs text-text-secondary mt-0.5 space-y-0.5">{lines}</div>;
 }

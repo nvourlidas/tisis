@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, FileText, Pencil, Check, X, Plus, Search } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, FileText, Pencil, Check, X, Plus, Search, Users, ExternalLink } from 'lucide-react';
+import { formatDate } from '../../lib/dateUtils';
 import { fetchClient, updateClient } from './clientUtils';
 import { createCase } from '../Cases/caseUtils';
 import { supabase } from '../../lib/supabase';
@@ -53,7 +54,7 @@ const CASE_COLUMNS: ColumnDef<CaseSummary>[] = [
     render: (c) => (
       <span className="text-text-secondary text-xs">
         {c.next_critical_date
-          ? new Date(c.next_critical_date + 'T00:00:00').toLocaleDateString('el-GR')
+          ? formatDate(c.next_critical_date)
           : '—'}
       </span>
     ),
@@ -118,6 +119,9 @@ export default function ClientDetail() {
         name: form.name, phone: form.phone ?? '', phone2: form.phone2 ?? '',
         email: form.email ?? '', vat: form.vat ?? '', address: form.address ?? '',
         professional_status: form.professional_status ?? '', notes: form.notes ?? '',
+        father_name: form.father_name ?? '', mother_name: form.mother_name ?? '',
+        birthdate: form.birthdate ?? '', amka: form.amka ?? '', iban: form.iban ?? '',
+        at: form.at ?? '', taxis_username: form.taxis_username ?? '', taxis_password: form.taxis_password ?? '',
       });
       setClient((prev) => prev ? { ...prev, ...form } : prev);
       setEditing(false);
@@ -132,13 +136,13 @@ export default function ClientDetail() {
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   if (loading) return <div className="p-6 text-sm text-text-secondary">Φόρτωση…</div>;
-  if (!client) return <div className="p-6 text-sm text-text-secondary">Ο πελάτης δεν βρέθηκε.</div>;
+  if (!client) return <div className="p-6 text-sm text-text-secondary">Ο εντολέας δεν βρέθηκε.</div>;
 
   return (
     <div className="p-6 space-y-6">
       <button onClick={() => navigate('/clients')} className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
         <ArrowLeft className="h-4 w-4" />
-        Πελάτες
+        Εντολείς
       </button>
 
       <div className="flex items-start justify-between gap-4">
@@ -166,6 +170,19 @@ export default function ClientDetail() {
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
+      {client.contact_id && (
+        <div className="flex items-center gap-3 rounded-xl border border-border/10 bg-white/3 px-4 py-3">
+          <Users className="h-4 w-4 text-text-secondary shrink-0" />
+          <span className="text-sm text-text-secondary">Αυτός ο εντολέας έχει συνδεδεμένη επαφή.</span>
+          <button
+            onClick={() => navigate(`/contacts/${client.contact_id}`)}
+            className="ml-auto inline-flex items-center gap-1.5 text-sm text-primary hover:underline cursor-pointer"
+          >
+            Προβολή επαφής <ExternalLink className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       <div className="rounded-xl border border-border/10 bg-secondary-background divide-y divide-border/10">
         {editing ? (
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -176,12 +193,26 @@ export default function ClientDetail() {
               ['vat', 'ΑΦΜ'],
               ['professional_status', 'Επαγγελματική Ιδιότητα'],
               ['address', 'Διεύθυνση'],
+              ['father_name', 'Όνομα πατρός'],
+              ['mother_name', 'Όνομα μητρός'],
+              ['amka', 'ΑΜΚΑ'],
+              ['iban', 'IBAN'],
+              ['at', 'ΑΤ (Αστυνομική Ταυτότητα)'],
+              ['taxis_username', 'Taxisnet Username'],
             ] as [keyof Client, string][]).map(([k, label]) => (
               <div key={k}>
                 <label className="block text-xs text-text-secondary mb-1">{label}</label>
                 <input className="input w-full" value={(form[k] as string) ?? ''} onChange={set(k)} />
               </div>
             ))}
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Taxisnet Password</label>
+              <input className="input w-full" type="password" value={(form.taxis_password as string) ?? ''} onChange={set('taxis_password')} />
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Ημ/νία γέννησης</label>
+              <input className="input w-full" type="date" value={(form.birthdate as string) ?? ''} onChange={set('birthdate')} />
+            </div>
             <div className="sm:col-span-2">
               <label className="block text-xs text-text-secondary mb-1">Σημειώσεις</label>
               <textarea className="input w-full resize-none" rows={3} value={(form.notes as string) ?? ''} onChange={set('notes')} />
@@ -194,6 +225,14 @@ export default function ClientDetail() {
             {client.email && <InfoRow icon={<Mail className="h-4 w-4" />} label="Email" value={client.email} />}
             {client.address && <InfoRow icon={<MapPin className="h-4 w-4" />} label="Διεύθυνση" value={client.address} />}
             {client.vat && <InfoRow icon={<FileText className="h-4 w-4" />} label="ΑΦΜ" value={client.vat} />}
+            {client.father_name && <InfoRow icon={<FileText className="h-4 w-4" />} label="Όνομα πατρός" value={client.father_name} />}
+            {client.mother_name && <InfoRow icon={<FileText className="h-4 w-4" />} label="Όνομα μητρός" value={client.mother_name} />}
+            {client.birthdate && <InfoRow icon={<FileText className="h-4 w-4" />} label="Ημ/νία γέννησης" value={formatDate(client.birthdate)} />}
+            {client.amka && <InfoRow icon={<FileText className="h-4 w-4" />} label="ΑΜΚΑ" value={client.amka} />}
+            {client.iban && <InfoRow icon={<FileText className="h-4 w-4" />} label="IBAN" value={client.iban} />}
+            {client.at && <InfoRow icon={<FileText className="h-4 w-4" />} label="ΑΤ" value={client.at} />}
+            {client.taxis_username && <InfoRow icon={<FileText className="h-4 w-4" />} label="Taxisnet Username" value={client.taxis_username} />}
+            {client.taxis_password && <InfoRow icon={<FileText className="h-4 w-4" />} label="Taxisnet Password" value={'•'.repeat(client.taxis_password.length)} />}
             {client.notes && (
               <div className="sm:col-span-2 text-sm text-text-secondary bg-white/3 rounded-lg p-3">{client.notes}</div>
             )}

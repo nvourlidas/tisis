@@ -6,26 +6,23 @@ Deno.serve(async (req) => {
     const auth = await authenticate(req)
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
-    const { title, description, due_date, case_id, contact_id, source_call_id, category, extra_data, fee, expenses } = await req.json()
+    const { id, title, description, due_date, category, extra_data, fee, expenses } = await req.json()
+    if (!id) return json({ error: 'id is required' }, 400)
     if (!title?.trim()) return json({ error: 'title is required' }, 400)
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('tasks')
-      .insert({
-        tenant_id: tenantId,
+      .update({
         title: title.trim(),
         description: description || null,
         due_date: due_date || null,
-        case_id: case_id || null,
-        contact_id: contact_id || null,
-        source_call_id: source_call_id || null,
         category: category || null,
         extra_data: extra_data || null,
         fee: fee ?? null,
         expenses: expenses?.length ? expenses : null,
-        status: 'open',
       })
-      .select().single()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
     if (error) return json({ error: error.message }, 400)
-    return json(data)
+    return json({ ok: true })
   } catch (e) { return json({ error: e.message }, 500) }
 })

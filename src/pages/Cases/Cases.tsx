@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Briefcase } from 'lucide-react';
+import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchCases, createCase, searchCases } from './caseUtils';
-import type { Case, CaseFormData, CaseStatus } from './types';
+import type { Case, CaseFormData, CaseStatus, CaseType } from './types';
+
+const TYPE_COLORS: Record<CaseType, string> = {
+  'Αστικό':      'bg-blue-500/15 text-blue-400',
+  'Ποινικό':     'bg-red-500/15 text-red-400',
+  'Διοικητικό':  'bg-purple-500/15 text-purple-400',
+  'Εμπορικό':    'bg-orange-500/15 text-orange-400',
+};
 import NewCaseModal from './modals/NewCaseModal';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
 
@@ -34,7 +42,7 @@ const COLUMNS: ColumnDef<Case>[] = [
   },
   {
     key: 'client_name',
-    header: 'Πελάτης',
+    header: 'Εντολέας',
     render: (c) => <span className="text-text-secondary">{c.client_name ?? '—'}</span>,
     sortValue: (c) => c.client_name ?? '',
   },
@@ -54,7 +62,7 @@ const COLUMNS: ColumnDef<Case>[] = [
     render: (c) => (
       <span className="text-text-secondary">
         {c.next_critical_date
-          ? new Date(c.next_critical_date + 'T00:00:00').toLocaleDateString('el-GR')
+          ? formatDate(c.next_critical_date)
           : '—'}
       </span>
     ),
@@ -62,10 +70,19 @@ const COLUMNS: ColumnDef<Case>[] = [
     defaultVisible: false,
   },
   {
+    key: 'type',
+    header: 'Τύπος',
+    render: (c) => c.type
+      ? <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[c.type]}`}>{c.type}</span>
+      : <span className="text-text-secondary">—</span>,
+    sortValue: (c) => c.type ?? '',
+    defaultVisible: false,
+  },
+  {
     key: 'stage',
     header: 'Στάδιο',
-    render: (c) => <span className="text-text-secondary">{(c as any).stage ?? '—'}</span>,
-    sortValue: (c) => (c as any).stage ?? '',
+    render: (c) => <span className="text-text-secondary">{c.stage ?? '—'}</span>,
+    sortValue: (c) => c.stage ?? '',
     defaultVisible: false,
   },
 ];

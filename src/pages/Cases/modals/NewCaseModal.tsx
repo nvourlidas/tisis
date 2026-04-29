@@ -12,8 +12,10 @@ type Props = {
   defaultClientId?: string;
 };
 
+const CASE_TYPES = ['Αστικό', 'Ποινικό', 'Διοικητικό', 'Εμπορικό'] as const;
+
 const empty: CaseFormData = {
-  code: '', title: '', client_id: '', status: 'active',
+  code: '', title: '', client_id: '', status: 'active', type: '',
   stage: '', description: '', next_critical_date: '', google_drive_url: '', notes: '',
 };
 
@@ -87,6 +89,13 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
               </select>
             </div>
           </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Τύπος Υπόθεσης</label>
+            <select className="input w-full" value={form.type} onChange={set('type')}>
+              <option value="">— Επιλέξτε τύπο —</option>
+              {CASE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
 
           <div>
             <label className="block text-sm text-text-secondary mb-1">
@@ -97,9 +106,9 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
 
           {!defaultClientId && (
             <div>
-              <label className="block text-sm text-text-secondary mb-1">Πελάτης</label>
+              <label className="block text-sm text-text-secondary mb-1">Εντολέας</label>
               <select className="input w-full" value={form.client_id} onChange={set('client_id')}>
-                <option value="">— Χωρίς πελάτη —</option>
+                <option value="">— Χωρίς εντολέα —</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}

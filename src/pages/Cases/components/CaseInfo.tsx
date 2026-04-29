@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { Pencil, Check, X, ExternalLink } from 'lucide-react';
+import { formatDate } from '../../../lib/dateUtils';
 import { updateCase } from '../caseUtils';
 import { fetchClients } from '../../Clients/clientUtils';
 import type { Client } from '../../Clients/types';
-import type { Case, CaseFormData } from '../types';
+import type { Case, CaseFormData, CaseType } from '../types';
+
+const CASE_TYPES: CaseType[] = ['Αστικό', 'Ποινικό', 'Διοικητικό', 'Εμπορικό'];
 
 type Props = {
   caseData: Case;
@@ -24,6 +27,7 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
       title: caseData.title,
       client_id: caseData.client_id ?? '',
       status: caseData.status,
+      type: caseData.type ?? '',
       stage: caseData.stage ?? '',
       description: caseData.description ?? '',
       next_critical_date: caseData.next_critical_date ?? '',
@@ -81,14 +85,21 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
               <option value="closed">Κλειστή</option>
             </select>
           </div>
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Τύπος Υπόθεσης</label>
+            <select className="input w-full" value={form.type ?? ''} onChange={set('type')}>
+              <option value="">— Επιλέξτε τύπο —</option>
+              {CASE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
           <div className="sm:col-span-2">
             <label className="block text-xs text-text-secondary mb-1">Τίτλος <span className="text-danger">*</span></label>
             <input className="input w-full" value={form.title ?? ''} onChange={set('title')} required />
           </div>
           <div>
-            <label className="block text-xs text-text-secondary mb-1">Πελάτης</label>
+            <label className="block text-xs text-text-secondary mb-1">Εντολέας</label>
             <select className="input w-full" value={form.client_id ?? ''} onChange={set('client_id')}>
-              <option value="">— Χωρίς πελάτη —</option>
+              <option value="">— Χωρίς εντολέα —</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -129,15 +140,16 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
 
       <div className="rounded-xl border border-border/10 bg-secondary-background divide-y divide-border/10">
         <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <InfoField label="Τύπος Υπόθεσης" value={caseData.type} />
           <InfoField label="Στάδιο" value={caseData.stage} />
           <InfoField
             label="Επόμενη Κρίσιμη Ημερομηνία"
             value={caseData.next_critical_date
-              ? new Date(caseData.next_critical_date + 'T00:00:00').toLocaleDateString('el-GR')
+              ? formatDate(caseData.next_critical_date)
               : null}
           />
           {caseData.client_name && (
-            <InfoField label="Πελάτης" value={caseData.client_name} />
+            <InfoField label="Εντολέας" value={caseData.client_name} />
           )}
           {caseData.google_drive_url && (
             <div>

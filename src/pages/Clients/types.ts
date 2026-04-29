@@ -9,6 +9,15 @@ export type Client = {
   address: string | null;
   professional_status: string | null;
   notes: string | null;
+  father_name: string | null;
+  mother_name: string | null;
+  birthdate: string | null;
+  amka: string | null;
+  iban: string | null;
+  at: string | null;
+  taxis_username: string | null;
+  taxis_password: string | null;
+  contact_id: string | null;
   created_at: string;
 };
 
@@ -21,4 +30,12 @@ export type ClientFormData = {
   address: string;
   professional_status: string;
   notes: string;
+  father_name: string;
+  mother_name: string;
+  birthdate: string;
+  amka: string;
+  iban: string;
+  at: string;
+  taxis_username: string;
+  taxis_password: string;
 };

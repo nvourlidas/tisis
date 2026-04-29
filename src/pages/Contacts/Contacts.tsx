@@ -1,17 +1,26 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Users } from 'lucide-react';
+import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchContacts, createContact, searchContacts } from './contactUtils';
 import type { Contact, ContactFormData } from './types';
 import NewContactModal from './modals/NewContactModal';
+import RolesModal from './modals/RolesModal';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
 
 const COLUMNS: ColumnDef<Contact>[] = [
   {
     key: 'name',
     header: 'Όνομα',
-    render: (c) => <span className="font-medium text-text-primary">{c.name}</span>,
+    render: (c) => (
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-text-primary">{c.name}</span>
+        {c.is_client && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/20">Εντολέας</span>
+        )}
+      </div>
+    ),
     sortValue: (c) => c.name,
   },
   {
@@ -33,6 +42,83 @@ const COLUMNS: ColumnDef<Contact>[] = [
     sortValue: (c) => c.email ?? '',
     defaultVisible: false,
   },
+  {
+    key: 'phone2',
+    header: 'Τηλέφωνο 2',
+    render: (c) => <span className="text-text-secondary">{c.phone2 ?? '—'}</span>,
+    sortValue: (c) => c.phone2 ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'vat',
+    header: 'ΑΦΜ',
+    render: (c) => <span className="text-text-secondary font-mono text-xs">{c.vat ?? '—'}</span>,
+    sortValue: (c) => c.vat ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'professional_status',
+    header: 'Ιδιότητα',
+    render: (c) => <span className="text-text-secondary">{c.professional_status ?? '—'}</span>,
+    sortValue: (c) => c.professional_status ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'address',
+    header: 'Διεύθυνση',
+    render: (c) => <span className="text-text-secondary">{c.address ?? '—'}</span>,
+    sortValue: (c) => c.address ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'father_name',
+    header: 'Όνομα πατρός',
+    render: (c) => <span className="text-text-secondary">{c.father_name ?? '—'}</span>,
+    sortValue: (c) => c.father_name ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'mother_name',
+    header: 'Όνομα μητρός',
+    render: (c) => <span className="text-text-secondary">{c.mother_name ?? '—'}</span>,
+    sortValue: (c) => c.mother_name ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'birthdate',
+    header: 'Ημ/νία γέννησης',
+    render: (c) => <span className="text-text-secondary text-xs">{formatDate(c.birthdate)}</span>,
+    sortValue: (c) => c.birthdate ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'amka',
+    header: 'ΑΜΚΑ',
+    render: (c) => <span className="text-text-secondary font-mono text-xs">{c.amka ?? '—'}</span>,
+    sortValue: (c) => c.amka ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'iban',
+    header: 'IBAN',
+    render: (c) => <span className="text-text-secondary font-mono text-xs">{c.iban ?? '—'}</span>,
+    sortValue: (c) => c.iban ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'at',
+    header: 'ΑΤ',
+    render: (c) => <span className="text-text-secondary font-mono text-xs">{c.at ?? '—'}</span>,
+    sortValue: (c) => c.at ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'taxis_username',
+    header: 'Taxisnet Username',
+    render: (c) => <span className="text-text-secondary">{c.taxis_username ?? '—'}</span>,
+    sortValue: (c) => c.taxis_username ?? '',
+    defaultVisible: false,
+  },
 ];
 
 export default function Contacts() {
@@ -44,6 +130,7 @@ export default function Contacts() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showRoles, setShowRoles] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -72,10 +159,15 @@ export default function Contacts() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-bold text-text-primary">Επαφές</h1>
-        <button onClick={() => setShowCreate(true)} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
-          <Plus className="h-4 w-4" />
-          Νέα Επαφή
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowRoles(true)} className="btn-secondary cursor-pointer">
+            Ρόλοι
+          </button>
+          <button onClick={() => setShowCreate(true)} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
+            <Plus className="h-4 w-4" />
+            Νέα Επαφή
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -106,7 +198,8 @@ export default function Contacts() {
         />
       )}
 
-      <NewContactModal open={showCreate} onClose={() => setShowCreate(false)} onSubmit={handleCreate} />
+      <NewContactModal open={showCreate} onClose={() => setShowCreate(false)} onSubmit={handleCreate} tenantId={tenantId} />
+      <RolesModal open={showRoles} onClose={() => setShowRoles(false)} tenantId={tenantId} />
     </div>
   );
 }

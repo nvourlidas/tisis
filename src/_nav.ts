@@ -62,6 +62,7 @@ export const NAV: NavEntry[] = [
     roles: ['owner', 'admin'],
     children: [
       { label: 'Ομάδα', to: '/settings/users', roles: ['owner', 'admin'] },
+      { label: 'Ρόλοι Επαφών', to: '/settings/contact-roles', roles: ['owner', 'admin'] },
     ],
   },
 ];

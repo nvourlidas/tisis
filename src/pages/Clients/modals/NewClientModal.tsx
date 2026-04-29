@@ -11,6 +11,8 @@ type Props = {
 const empty: ClientFormData = {
   name: '', phone: '', phone2: '', email: '',
   vat: '', address: '', professional_status: '', notes: '',
+  father_name: '', mother_name: '', birthdate: '',
+  amka: '', iban: '', at: '', taxis_username: '', taxis_password: '',
 };
 
 export default function NewClientModal({ open, onClose, onSubmit }: Props) {
@@ -32,7 +34,7 @@ export default function NewClientModal({ open, onClose, onSubmit }: Props) {
       setForm(empty);
       onClose();
     } catch (err: any) {
-      setError(err?.message ?? 'Αποτυχία δημιουργίας πελάτη.');
+      setError(err?.message ?? 'Αποτυχία δημιουργίας εντολέα.');
     } finally {
       setLoading(false);
     }
@@ -42,7 +44,7 @@ export default function NewClientModal({ open, onClose, onSubmit }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/10">
-          <h2 className="text-base font-semibold text-text-primary">Νέος Πελάτης</h2>
+          <h2 className="text-base font-semibold text-text-primary">Νέος Εντολέας</h2>
           <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer">
             <X className="h-4 w-4" />
           </button>
@@ -80,6 +82,46 @@ export default function NewClientModal({ open, onClose, onSubmit }: Props) {
             <label className="block text-sm text-text-secondary mb-1">Διεύθυνση</label>
             <input className="input w-full" value={form.address} onChange={set('address')} />
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Όνομα πατρός</label>
+              <input className="input w-full" value={form.father_name} onChange={set('father_name')} />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Όνομα μητρός</label>
+              <input className="input w-full" value={form.mother_name} onChange={set('mother_name')} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Ημ/νία γέννησης</label>
+              <input className="input w-full" type="date" value={form.birthdate} onChange={set('birthdate')} />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">ΑΜΚΑ</label>
+              <input className="input w-full" value={form.amka} onChange={set('amka')} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">IBAN</label>
+              <input className="input w-full" value={form.iban} onChange={set('iban')} />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">ΑΤ (Αστυνομική Ταυτότητα)</label>
+              <input className="input w-full" value={form.at} onChange={set('at')} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Taxisnet Username</label>
+              <input className="input w-full" value={form.taxis_username} onChange={set('taxis_username')} />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Taxisnet Password</label>
+              <input className="input w-full" type="password" value={form.taxis_password} onChange={set('taxis_password')} />
+            </div>
+          </div>
           <div>
             <label className="block text-sm text-text-secondary mb-1">Σημειώσεις</label>
             <textarea className="input w-full resize-none" rows={3} value={form.notes} onChange={set('notes')} />
@@ -88,7 +130,7 @@ export default function NewClientModal({ open, onClose, onSubmit }: Props) {
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary cursor-pointer">Ακύρωση</button>
             <button type="submit" disabled={loading} className="btn-primary cursor-pointer">
-              {loading ? 'Αποθήκευση…' : 'Δημιουργία Πελάτη'}
+              {loading ? 'Αποθήκευση…' : 'Δημιουργία Εντολέα'}
             </button>
           </div>
         </form>

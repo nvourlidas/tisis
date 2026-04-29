@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, User } from 'lucide-react';
+import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchClients, createClient, searchClients } from './clientUtils';
 import type { Client, ClientFormData } from './types';
@@ -36,8 +37,57 @@ const COLUMNS: ColumnDef<Client>[] = [
   {
     key: 'vat',
     header: 'ΑΦΜ',
-    render: (c) => <span className="text-text-secondary font-mono text-xs">{(c as any).vat ?? '—'}</span>,
-    sortValue: (c) => (c as any).vat ?? '',
+    render: (c) => <span className="text-text-secondary font-mono text-xs">{c.vat ?? '—'}</span>,
+    sortValue: (c) => c.vat ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'father_name',
+    header: 'Όνομα πατρός',
+    render: (c) => <span className="text-text-secondary">{c.father_name ?? '—'}</span>,
+    sortValue: (c) => c.father_name ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'mother_name',
+    header: 'Όνομα μητρός',
+    render: (c) => <span className="text-text-secondary">{c.mother_name ?? '—'}</span>,
+    sortValue: (c) => c.mother_name ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'birthdate',
+    header: 'Ημ/νία γέννησης',
+    render: (c) => <span className="text-text-secondary text-xs">{formatDate(c.birthdate)}</span>,
+    sortValue: (c) => c.birthdate ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'amka',
+    header: 'ΑΜΚΑ',
+    render: (c) => <span className="text-text-secondary font-mono text-xs">{c.amka ?? '—'}</span>,
+    sortValue: (c) => c.amka ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'iban',
+    header: 'IBAN',
+    render: (c) => <span className="text-text-secondary font-mono text-xs">{c.iban ?? '—'}</span>,
+    sortValue: (c) => c.iban ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'at',
+    header: 'ΑΤ',
+    render: (c) => <span className="text-text-secondary font-mono text-xs">{c.at ?? '—'}</span>,
+    sortValue: (c) => c.at ?? '',
+    defaultVisible: false,
+  },
+  {
+    key: 'taxis_username',
+    header: 'Taxisnet Username',
+    render: (c) => <span className="text-text-secondary">{c.taxis_username ?? '—'}</span>,
+    sortValue: (c) => c.taxis_username ?? '',
     defaultVisible: false,
   },
 ];
@@ -78,10 +128,10 @@ export default function Clients() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-bold text-text-primary">Πελάτες</h1>
+        <h1 className="text-xl font-bold text-text-primary">Εντολείς</h1>
         <button onClick={() => setShowCreate(true)} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
           <Plus className="h-4 w-4" />
-          Νέος Πελάτης
+          Νέος Εντολέας
         </button>
       </div>
 
@@ -107,7 +157,7 @@ export default function Clients() {
           emptyState={
             <div className="flex flex-col items-center justify-center py-8 text-text-secondary">
               <User className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm">{query ? 'Δεν βρέθηκαν πελάτες.' : 'Δεν υπάρχουν πελάτες ακόμα.'}</p>
+              <p className="text-sm">{query ? 'Δεν βρέθηκαν εντολείς.' : 'Δεν υπάρχουν εντολείς ακόμα.'}</p>
             </div>
           }
         />

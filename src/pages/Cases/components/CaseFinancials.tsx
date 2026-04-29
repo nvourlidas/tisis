@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { fetchCaseFinancials, createFinancial } from '../caseUtils';
 import type { CaseFinancial } from '../types';
+import { formatDate } from '../../../lib/dateUtils';
 
 type Props = { caseId: string; tenantId: string };
 
@@ -204,7 +205,7 @@ export default function CaseFinancials({ caseId, tenantId }: Props) {
                     {e.type === 'receipt' ? '+' : '-'}{formatEur(e.amount)}
                   </td>
                   <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
-                    {e.date ? new Date(e.date + 'T00:00:00').toLocaleDateString('el-GR') : '—'}
+                    {formatDate(e.date)}
                   </td>
                 </tr>
               ))}

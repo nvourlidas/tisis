@@ -1,4 +1,5 @@
 export type CaseStatus = 'active' | 'pending' | 'closed';
+export type CaseType = 'Αστικό' | 'Ποινικό' | 'Διοικητικό' | 'Εμπορικό';
 
 export type Case = {
   id: string;
@@ -12,6 +13,7 @@ export type Case = {
   next_critical_date: string | null;
   google_drive_url: string | null;
   notes: string | null;
+  type: CaseType | null;
   created_at: string;
   // joined
   client_name?: string | null;
@@ -22,6 +24,7 @@ export type CaseFormData = {
   title: string;
   client_id: string;
   status: CaseStatus;
+  type: CaseType | '';
   stage: string;
   description: string;
   next_critical_date: string;
@@ -55,6 +58,10 @@ export type CaseTask = {
   status: 'open' | 'done';
   completed_at: string | null;
   created_at: string;
+  category: import('../Tasks/taskUtils').TaskCategory | null;
+  extra_data: import('../Tasks/taskUtils').LegalActData | import('../Tasks/taskUtils').AppointmentData | null;
+  fee: number | null;
+  expenses: import('../Tasks/taskUtils').TaskExpense[] | null;
 };
 
 export type CaseFinancial = {
