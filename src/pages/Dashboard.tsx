@@ -6,10 +6,11 @@ import {
   ChevronLeft, ChevronRight, X as XIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth';
-import { fetchAllTasks, completeTask, reopenTask } from './Tasks/taskUtils';
+import { fetchAllTasks, completeTask, reopenTask, createTask } from './Tasks/taskUtils';
 import { fetchCalls, linkCallToCase, searchCasesForCall } from './Calls/callUtils';
 import { supabase } from '../lib/supabase';
 import NewCallModal from './Calls/modals/NewCallModal';
+import TaskForm, { type TaskFormValues } from './Tasks/TaskForm';
 import type { Task, TaskExpense } from './Tasks/taskUtils';
 import type { Call } from './Calls/types';
 import { formatDate } from '../lib/dateUtils';
@@ -190,7 +191,7 @@ export default function Dashboard() {
 
       {/* Calendar */}
       {!loading && (
-        <DashboardCalendar tasks={tasks} calls={calls} onNavigate={navigate} />
+        <DashboardCalendar tasks={tasks} calls={calls} onNavigate={navigate} tenantId={tenantId} onTaskCreated={load} onToggleTask={toggle} toggling={toggling} />
       )}
 
       <NewCallModal
@@ -393,21 +394,72 @@ type CalendarItem =
   | { kind: 'task'; id: string; title: string; case_id?: string | null; case_code?: string | null; case_title?: string | null; status: string; due_date: string; fee?: number | null; expenses?: TaskExpense[] | null; category?: string | null; description?: string | null }
   | { kind: 'call'; id: string; caller_name: string | null; phone: string | null; direction: string; case_id?: string | null; case_code?: string | null; case_title?: string | null; created_at: string };
 
+type CalendarView = 'month' | 'week' | 'day';
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function weekStart(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = (d.getDay() + 6) % 7; // Mon=0
+  d.setDate(d.getDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
 function DashboardCalendar({
   tasks,
   calls,
   onNavigate,
+  tenantId,
+  onTaskCreated,
+  onToggleTask,
+  toggling,
 }: {
   tasks: Task[];
   calls: Call[];
   onNavigate: ReturnType<typeof useNavigate>;
+  tenantId: string;
+  onTaskCreated: () => void;
+  onToggleTask: (t: Task) => void;
+  toggling: string | null;
 }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
 
+  const [view, setView] = useState<CalendarView>('month');
   const [year, setYear] = useState(todayDate.getFullYear());
   const [month, setMonth] = useState(todayDate.getMonth()); // 0-indexed
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<string>(todayStr);
+  const [newTaskDate, setNewTaskDate] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleCreateTask = async (values: TaskFormValues) => {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await createTask(tenantId, {
+        title: values.title,
+        description: values.description,
+        due_date: values.due_date,
+        case_id: values.case_id,
+        category: values.category || undefined,
+        extra_data: values.extra_data,
+        fee: values.fee,
+        expenses: values.expenses,
+      });
+      setNewTaskDate(null);
+      onTaskCreated();
+    } catch (err: any) {
+      setCreateError(err?.message ?? 'Αποτυχία δημιουργίας εργασίας.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
@@ -423,6 +475,18 @@ function DashboardCalendar({
     setYear(todayDate.getFullYear());
     setMonth(todayDate.getMonth());
     setSelectedDay(todayStr);
+    setAnchor(todayStr);
+  };
+
+  const prevPeriod = () => {
+    if (view === 'week') setAnchor(a => addDays(a, -7));
+    else if (view === 'day') setAnchor(a => addDays(a, -1));
+    else prevMonth();
+  };
+  const nextPeriod = () => {
+    if (view === 'week') setAnchor(a => addDays(a, 7));
+    else if (view === 'day') setAnchor(a => addDays(a, 1));
+    else nextMonth();
   };
 
   // Map date string → items
@@ -460,186 +524,326 @@ function DashboardCalendar({
 
   const selectedItems = selectedDay ? (itemsByDay.get(selectedDay) ?? []) : [];
 
+  const weekDays = useMemo(() => {
+    const start = weekStart(anchor);
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  }, [anchor]);
+
+  const headerTitle = useMemo(() => {
+    if (view === 'month') return `${MONTH_NAMES[month]} ${year}`;
+    if (view === 'week') {
+      const s = new Date(weekDays[0] + 'T00:00:00');
+      const e = new Date(weekDays[6] + 'T00:00:00');
+      const sm = MONTH_NAMES[s.getMonth()];
+      const em = MONTH_NAMES[e.getMonth()];
+      return sm === em
+        ? `${s.getDate()}–${e.getDate()} ${sm} ${e.getFullYear()}`
+        : `${s.getDate()} ${sm} – ${e.getDate()} ${em} ${e.getFullYear()}`;
+    }
+    // day
+    return new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }, [view, month, year, weekDays, anchor]);
+
   return (
     <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <CalendarClock className="h-4 w-4 text-text-secondary" />
-          <h2 className="text-sm font-semibold text-text-primary">
-            {MONTH_NAMES[month]} {year}
-          </h2>
+          <h2 className="text-sm font-semibold text-text-primary">{headerTitle}</h2>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* View toggle */}
+          <div className="flex rounded-lg border border-border/15 overflow-hidden text-xs">
+            {(['month', 'week', 'day'] as CalendarView[]).map(v => (
+              <button
+                key={v}
+                onClick={() => { setView(v); if (v !== 'month') setAnchor(selectedDay ?? todayStr); }}
+                className={`px-2.5 py-1 cursor-pointer transition-colors ${view === v ? 'bg-primary/20 text-primary font-semibold' : 'text-text-secondary hover:bg-white/5'}`}
+              >
+                {v === 'month' ? 'Μήνας' : v === 'week' ? 'Εβδομάδα' : 'Ημέρα'}
+              </button>
+            ))}
+          </div>
           <button onClick={goToday} className="px-2 py-1 text-xs text-primary hover:underline cursor-pointer">Σήμερα</button>
-          <button onClick={prevMonth} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
-          <button onClick={nextMonth} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
+          <button onClick={prevPeriod} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
+          <button onClick={nextPeriod} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
         </div>
       </div>
 
-      {/* Day-of-week headers */}
-      <div className="grid grid-cols-7 gap-px">
-        {DAY_NAMES.map(d => (
-          <div key={d} className="text-center text-[10px] font-semibold text-text-secondary uppercase tracking-wide py-1">{d}</div>
-        ))}
-      </div>
-
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-px">
-        {cells.map((day, i) => {
-          if (!day) return <div key={`empty-${i}`} />;
-          const ds = dayStr(day);
-          const items = itemsByDay.get(ds) ?? [];
-          const isToday = ds === todayStr;
-          const isSelected = ds === selectedDay;
-          const tasks_ = items.filter(x => x.kind === 'task');
-          const calls_ = items.filter(x => x.kind === 'call');
-
-          return (
-            <button
-              key={ds}
-              onClick={() => setSelectedDay(isSelected ? null : ds)}
-              className={[
-                'relative min-h-16 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1',
-                isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
-                isToday ? 'ring-1 ring-primary/50' : '',
-              ].join(' ')}
-            >
-              <span className={[
-                'text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0',
-                isToday ? 'bg-primary text-white' : 'text-text-secondary',
-              ].join(' ')}>
-                {day}
-              </span>
-              <div className="flex flex-col gap-0.5 overflow-hidden">
-                {tasks_.slice(0, 2).map((item) => {
-                  const overdue = item.kind === 'task' && item.status === 'open' && ds < todayStr;
-                  const done = item.kind === 'task' && item.status === 'done';
-                  return (
-                    <span key={item.id} className={[
-                      'text-[10px] leading-tight px-1 rounded truncate',
-                      done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
-                      overdue ? 'bg-orange-500/15 text-orange-400' :
-                      'bg-primary/15 text-primary',
-                    ].join(' ')}>
-                      {item.kind === 'task' ? item.title : ''}
+      {/* ── MONTH VIEW ── */}
+      {view === 'month' && (<>
+        <div className="grid grid-cols-7 gap-px">
+          {DAY_NAMES.map(d => (
+            <div key={d} className="text-center text-[10px] font-semibold text-text-secondary uppercase tracking-wide py-1">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-px">
+          {cells.map((day, i) => {
+            if (!day) return <div key={`empty-${i}`} />;
+            const ds = dayStr(day);
+            const items = itemsByDay.get(ds) ?? [];
+            const isToday = ds === todayStr;
+            const isSelected = ds === selectedDay;
+            const tasks_ = items.filter(x => x.kind === 'task');
+            const calls_ = items.filter(x => x.kind === 'call');
+            return (
+              <button
+                key={ds}
+                onClick={() => setSelectedDay(isSelected ? null : ds)}
+                className={[
+                  'relative min-h-16 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1',
+                  isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
+                  isToday ? 'ring-1 ring-primary/50' : '',
+                ].join(' ')}
+              >
+                <span className={['text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0', isToday ? 'bg-primary text-white' : 'text-text-secondary'].join(' ')}>
+                  {day}
+                </span>
+                <div className="flex flex-col gap-0.5 overflow-hidden">
+                  {tasks_.slice(0, 2).map((item) => {
+                    const overdue = item.kind === 'task' && item.status === 'open' && ds < todayStr;
+                    const done = item.kind === 'task' && item.status === 'done';
+                    return (
+                      <span key={item.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate', done ? 'bg-green-500/10 text-green-400 line-through opacity-60' : overdue ? 'bg-orange-500/15 text-orange-400' : 'bg-primary/15 text-primary'].join(' ')}>
+                        {item.kind === 'task' ? item.title : ''}
+                      </span>
+                    );
+                  })}
+                  {calls_.slice(0, 2).map((item) => (
+                    <span key={item.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate', item.kind === 'call' && item.direction === 'incoming' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'].join(' ')}>
+                      {item.kind === 'call' ? (item.caller_name ?? item.phone ?? 'Κλήση') : ''}
                     </span>
-                  );
-                })}
-                {calls_.slice(0, 2).map((item) => (
-                  <span key={item.id} className={[
-                    'text-[10px] leading-tight px-1 rounded truncate',
-                    item.kind === 'call' && item.direction === 'incoming'
-                      ? 'bg-green-500/10 text-green-400'
-                      : 'bg-blue-500/10 text-blue-400',
-                  ].join(' ')}>
-                    {item.kind === 'call' ? (item.caller_name ?? item.phone ?? 'Κλήση') : ''}
-                  </span>
-                ))}
-                {items.length > 4 && (
-                  <span className="text-[10px] text-text-secondary px-1">+{items.length - 4} ακόμα</span>
-                )}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                  ))}
+                  {items.length > 4 && <span className="text-xs text-text-secondary px-1">+{items.length - 4} ακόμα</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {selectedDay && (
+          <DayPanel day={selectedDay} items={selectedItems} todayStr={todayStr} onNavigate={onNavigate} onClose={() => setSelectedDay(null)} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} />
+        )}
+      </>)}
 
-      {/* Selected day panel */}
-      {selectedDay && (
-        <div className="border-t border-border/10 pt-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text-primary">
-              {new Date(selectedDay + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </h3>
-            <button onClick={() => setSelectedDay(null)} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
+      {/* ── WEEK VIEW ── */}
+      {view === 'week' && (
+        <div className="grid grid-cols-7 gap-1">
+          {weekDays.map((ds) => {
+            const d = new Date(ds + 'T00:00:00');
+            const items = itemsByDay.get(ds) ?? [];
+            const isToday = ds === todayStr;
+            const isSelected = ds === anchor;
+            return (
+              <div
+                key={ds}
+                onClick={() => setAnchor(ds)}
+                className={['rounded-lg p-2 flex flex-col gap-1 min-h-36 cursor-pointer transition-colors', isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4', isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}
+              >
+                <div className="flex flex-col items-center pb-1 border-b border-border/10">
+                  <span className="text-[10px] font-semibold text-text-secondary uppercase">{DAY_NAMES[(d.getDay() + 6) % 7]}</span>
+                  <span className={['text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full', isToday ? 'bg-primary text-white' : 'text-text-primary'].join(' ')}>{d.getDate()}</span>
+                </div>
+                <div className="flex flex-col gap-0.5 overflow-hidden">
+                  {items.map((item) => {
+                    if (item.kind === 'task') {
+                      const overdue = item.status === 'open' && ds < todayStr;
+                      const done = item.status === 'done';
+                      return (
+                        <span key={item.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block', done ? 'bg-green-500/10 text-green-400 line-through opacity-60' : overdue ? 'bg-orange-500/15 text-orange-400' : 'bg-primary/15 text-primary'].join(' ')}>
+                          {item.title}
+                        </span>
+                      );
+                    }
+                    return (
+                      <span key={item.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block', item.direction === 'incoming' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'].join(' ')}>
+                        {item.caller_name ?? item.phone ?? 'Κλήση'}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {view === 'week' && (
+        <DayPanel
+          day={anchor}
+          items={itemsByDay.get(anchor) ?? []}
+          todayStr={todayStr}
+          onNavigate={onNavigate}
+          onClose={undefined}
+          onAddTask={setNewTaskDate}
+          onToggleTask={onToggleTask}
+          toggling={toggling}
+        />
+      )}
+
+      {/* ── DAY VIEW ── */}
+      {view === 'day' && (
+        <DayPanel
+          day={anchor}
+          items={itemsByDay.get(anchor) ?? []}
+          todayStr={todayStr}
+          onNavigate={onNavigate}
+          onClose={undefined}
+          onAddTask={setNewTaskDate}
+          onToggleTask={onToggleTask}
+          toggling={toggling}
+        />
+      )}
+
+      {/* New task modal */}
+      {newTaskDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border/10">
+              <h2 className="text-base font-semibold text-text-primary">Νέα Εργασία</h2>
+              <button onClick={() => { setNewTaskDate(null); setCreateError(null); }} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer">
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-6">
+              <TaskForm
+                tenantId={tenantId}
+                initial={{ due_date: newTaskDate }}
+                saving={creating}
+                error={createError}
+                onSubmit={handleCreateTask}
+                onCancel={() => { setNewTaskDate(null); setCreateError(null); }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onToggleTask, toggling }: {
+  day: string;
+  items: CalendarItem[];
+  todayStr: string;
+  onNavigate: ReturnType<typeof useNavigate>;
+  onClose?: () => void;
+  onAddTask: (date: string) => void;
+  onToggleTask: (t: Task) => void;
+  toggling: string | null;
+}) {
+  return (
+    <div className="border-t border-border/10 pt-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-text-primary">
+          {new Date(day + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        </h3>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onAddTask(day)}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-primary hover:bg-primary/10 cursor-pointer transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Νέα Εργασία
+          </button>
+          {onClose && (
+            <button onClick={onClose} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
               <XIcon className="h-3.5 w-3.5" />
             </button>
-          </div>
-          {selectedItems.length === 0 ? (
-            <p className="text-sm text-text-secondary">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
-          ) : (
-            <div className="space-y-2">
-              {selectedItems.map((item) => {
-                if (item.kind === 'task') {
-                  const overdue = item.status === 'open' && item.due_date < todayStr;
-                  const done = item.status === 'done';
-                  const totalExpenses = item.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
-                  const hasFinancials = item.fee || (item.expenses?.length ?? 0) > 0;
-                  return (
-                    <div key={item.id} className={`rounded-xl border px-4 py-3 space-y-2 ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
-                      <div className="flex items-start gap-3">
-                        <CheckSquare className={`h-4 w-4 mt-0.5 shrink-0 ${overdue ? 'text-orange-400' : done ? 'text-green-400' : 'text-primary'}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium ${done ? 'line-through text-text-secondary' : 'text-text-primary'}`}>{item.title}</p>
-                          {item.description && (
-                            <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{item.description}</p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
-                            {item.case_code && (
-                              <button
-                                onClick={() => item.case_id && onNavigate(`/cases/${item.case_id}`)}
-                                className="text-xs text-primary hover:underline cursor-pointer font-mono"
-                              >
-                                {item.case_code} — {item.case_title}
-                              </button>
-                            )}
-                            {item.category && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/8 text-text-secondary border border-border/10">
-                                {item.category === 'legal_act' ? 'Νομικές Πράξεις' :
-                                 item.category === 'extrajudicial' ? 'Εξοδικαστηκές' :
-                                 item.category === 'appointment' ? 'Ραντεβού' : 'Εργασία Φακέλου'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {overdue && (
-                          <span className="text-[10px] font-semibold text-orange-400 shrink-0 bg-orange-500/10 px-2 py-0.5 rounded-full">Ληξ/θεσμη</span>
-                        )}
-                      </div>
-                      {hasFinancials && (
-                        <div className="flex flex-wrap gap-3 pl-7 text-xs text-green-400">
-                          {item.fee != null && item.fee > 0 && (
-                            <span>Αμοιβή: <strong>{item.fee.toFixed(2)} €</strong></span>
-                          )}
-                          {(item.expenses?.length ?? 0) > 0 && (
-                            <span className="text-red-400">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({item.expenses!.length})</span>
-                          )}
-                        </div>
+          )}
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-sm text-text-secondary">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => {
+            if (item.kind === 'task') {
+              const overdue = item.status === 'open' && item.due_date < todayStr;
+              const done = item.status === 'done';
+              const totalExpenses = item.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
+              const hasFinancials = item.fee || (item.expenses?.length ?? 0) > 0;
+              return (
+                <div key={item.id} className={`rounded-xl border px-4 py-3 space-y-2 ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
+                  <div className="flex items-start gap-3">
+                    <button
+                      onClick={() => onToggleTask(item as unknown as Task)}
+                      disabled={toggling === item.id}
+                      className={[
+                        'mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
+                        done ? 'border-green-500 bg-green-500 text-white' : overdue ? 'border-orange-400 hover:bg-orange-400/20' : 'border-border/30 hover:border-primary',
+                      ].join(' ')}
+                    >
+                      {done && <Check className="h-3 w-3" />}
+                      {!done && toggling === item.id && <RotateCcw className="h-2.5 w-2.5 animate-spin text-text-secondary" />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${done ? 'line-through text-text-secondary' : 'text-text-primary'}`}>{item.title}</p>
+                      {item.description && (
+                        <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{item.description}</p>
                       )}
-                    </div>
-                  );
-                }
-                // call
-                return (
-                  <div key={item.id} className="rounded-xl border border-border/10 bg-white/2 px-4 py-3 space-y-1">
-                    <div className="flex items-start gap-3">
-                      <div className={`mt-0.5 shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${item.direction === 'incoming' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                        {item.direction === 'incoming' ? <PhoneIncoming className="h-3 w-3" /> : <PhoneOutgoing className="h-3 w-3" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {item.caller_name && <span className="text-sm font-medium text-text-primary">{item.caller_name}</span>}
-                          {item.phone && <span className="text-sm text-text-secondary font-mono">{item.phone}</span>}
-                          <span className="text-xs text-text-secondary ml-auto">
-                            {new Date(item.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
                         {item.case_code && (
                           <button
                             onClick={() => item.case_id && onNavigate(`/cases/${item.case_id}`)}
-                            className="text-xs text-primary hover:underline cursor-pointer mt-0.5 font-mono"
+                            className="text-xs text-primary hover:underline cursor-pointer font-mono"
                           >
                             {item.case_code} — {item.case_title}
                           </button>
                         )}
+                        {item.category && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/8 text-text-secondary border border-border/10">
+                            {item.category === 'legal_act' ? 'Νομικές Πράξεις' :
+                             item.category === 'extrajudicial' ? 'Εξοδικαστηκές' :
+                             item.category === 'appointment' ? 'Ραντεβού' : 'Εργασία Φακέλου'}
+                          </span>
+                        )}
                       </div>
                     </div>
+                    {overdue && (
+                      <span className="text-[10px] font-semibold text-orange-400 shrink-0 bg-orange-500/10 px-2 py-0.5 rounded-full">Ληξ/θεσμη</span>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  {hasFinancials && (
+                    <div className="flex flex-wrap gap-3 pl-7 text-xs text-green-400">
+                      {item.fee != null && item.fee > 0 && (
+                        <span>Αμοιβή: <strong>{item.fee.toFixed(2)} €</strong></span>
+                      )}
+                      {(item.expenses?.length ?? 0) > 0 && (
+                        <span className="text-red-400">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({item.expenses!.length})</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <div key={item.id} className="rounded-xl border border-border/10 bg-white/2 px-4 py-3 space-y-1">
+                <div className="flex items-start gap-3">
+                  <div className={`mt-0.5 shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${item.direction === 'incoming' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                    {item.direction === 'incoming' ? <PhoneIncoming className="h-3 w-3" /> : <PhoneOutgoing className="h-3 w-3" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {item.caller_name && <span className="text-sm font-medium text-text-primary">{item.caller_name}</span>}
+                      {item.phone && <span className="text-sm text-text-secondary font-mono">{item.phone}</span>}
+                      <span className="text-xs text-text-secondary ml-auto">
+                        {new Date(item.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    {item.case_code && (
+                      <button
+                        onClick={() => item.case_id && onNavigate(`/cases/${item.case_id}`)}
+                        className="text-xs text-primary hover:underline cursor-pointer mt-0.5 font-mono"
+                      >
+                        {item.case_code} — {item.case_title}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

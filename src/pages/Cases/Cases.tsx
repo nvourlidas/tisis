@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Briefcase } from 'lucide-react';
+import { Plus, Search, Briefcase, Settings2 } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchCases, createCase, searchCases } from './caseUtils';
@@ -13,6 +13,7 @@ const TYPE_COLORS: Record<CaseType, string> = {
   'Εμπορικό':    'bg-orange-500/15 text-orange-400',
 };
 import NewCaseModal from './modals/NewCaseModal';
+import StagesModal from './modals/StagesModal';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -81,8 +82,8 @@ const COLUMNS: ColumnDef<Case>[] = [
   {
     key: 'stage',
     header: 'Στάδιο',
-    render: (c) => <span className="text-text-secondary">{c.stage ?? '—'}</span>,
-    sortValue: (c) => c.stage ?? '',
+    render: (c) => <span className="text-text-secondary">{c.stage_name ?? '—'}</span>,
+    sortValue: (c) => c.stage_name ?? '',
     defaultVisible: false,
   },
 ];
@@ -99,6 +100,7 @@ export default function Cases() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [showCreate, setShowCreate] = useState(false);
+  const [showStages, setShowStages] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -133,10 +135,16 @@ export default function Cases() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-bold text-text-primary">Υποθέσεις</h1>
-        <button onClick={() => setShowCreate(true)} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
-          <Plus className="h-4 w-4" />
-          Νέα Υπόθεση
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowStages(true)} className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer">
+            <Settings2 className="h-3.5 w-3.5" />
+            Στάδια
+          </button>
+          <button onClick={() => setShowCreate(true)} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
+            <Plus className="h-4 w-4" />
+            Νέα Υπόθεση
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -188,6 +196,11 @@ export default function Cases() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onSubmit={handleCreate}
+        tenantId={tenantId}
+      />
+      <StagesModal
+        open={showStages}
+        onClose={() => setShowStages(false)}
         tenantId={tenantId}
       />
     </div>

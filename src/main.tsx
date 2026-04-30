@@ -19,8 +19,10 @@ import Contacts from './pages/Contacts/Contacts';
 import ContactDetail from './pages/Contacts/ContactDetail';
 import Calls from './pages/Calls/Calls';
 import Tasks from './pages/Tasks/Tasks';
+import Finances from './pages/Finances/Finances';
 import UsersSettings from './pages/Settings/Users';
 import ContactRoles from './pages/Settings/ContactRoles';
+import CaseStages from './pages/Settings/CaseStages';
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -43,8 +45,10 @@ const router = createBrowserRouter([
       { path: 'contacts/:id', element: <ContactDetail /> },
       { path: 'calls', element: <Calls /> },
       { path: 'tasks', element: <Tasks /> },
+      { path: 'finances', element: <Finances /> },
       { path: 'settings/users', element: <UsersSettings /> },
       { path: 'settings/contact-roles', element: <ContactRoles /> },
+      { path: 'settings/case-stages', element: <CaseStages /> },
     ],
   },
 ]);

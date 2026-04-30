@@ -1,6 +1,14 @@
 export type CaseStatus = 'active' | 'pending' | 'closed';
 export type CaseType = 'Αστικό' | 'Ποινικό' | 'Διοικητικό' | 'Εμπορικό';
 
+export type CaseStage = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  position: number;
+  created_at: string;
+};
+
 export type Case = {
   id: string;
   tenant_id: string;
@@ -8,7 +16,7 @@ export type Case = {
   code: string;
   title: string;
   status: CaseStatus;
-  stage: string | null;
+  stage_id: string | null;
   description: string | null;
   next_critical_date: string | null;
   google_drive_url: string | null;
@@ -17,6 +25,7 @@ export type Case = {
   created_at: string;
   // joined
   client_name?: string | null;
+  stage_name?: string | null;
 };
 
 export type CaseFormData = {
@@ -25,7 +34,7 @@ export type CaseFormData = {
   client_id: string;
   status: CaseStatus;
   type: CaseType | '';
-  stage: string;
+  stage_id: string;
   description: string;
   next_critical_date: string;
   google_drive_url: string;

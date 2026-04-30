@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { fetchClients } from '../../Clients/clientUtils';
+import { fetchStages } from '../caseUtils';
 import type { Client } from '../../Clients/types';
-import type { CaseFormData } from '../types';
+import type { CaseFormData, CaseStage } from '../types';
 
 type Props = {
   open: boolean;
@@ -16,19 +17,23 @@ const CASE_TYPES = ['Αστικό', 'Ποινικό', 'Διοικητικό', '�
 
 const empty: CaseFormData = {
   code: '', title: '', client_id: '', status: 'active', type: '',
-  stage: '', description: '', next_critical_date: '', google_drive_url: '', notes: '',
+  stage_id: '', description: '', next_critical_date: '', google_drive_url: '', notes: '',
 };
 
 export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaultClientId }: Props) {
   const [form, setForm] = useState<CaseFormData>({ ...empty, client_id: defaultClientId ?? '' });
   const [clients, setClients] = useState<Client[]>([]);
+  const [stages, setStages] = useState<CaseStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setForm({ ...empty, client_id: defaultClientId ?? '' });
-      if (tenantId && !defaultClientId) fetchClients(tenantId).then(setClients);
+      if (tenantId) {
+        if (!defaultClientId) fetchClients(tenantId).then(setClients);
+        fetchStages(tenantId).then(setStages);
+      }
     }
   }, [open, tenantId, defaultClientId]);
 
@@ -89,12 +94,21 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
               </select>
             </div>
           </div>
-          <div>
-            <label className="block text-sm text-text-secondary mb-1">Τύπος Υπόθεσης</label>
-            <select className="input w-full" value={form.type} onChange={set('type')}>
-              <option value="">— Επιλέξτε τύπο —</option>
-              {CASE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Τύπος Υπόθεσης</label>
+              <select className="input w-full" value={form.type} onChange={set('type')}>
+                <option value="">— Επιλέξτε τύπο —</option>
+                {CASE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Στάδιο</label>
+              <select className="input w-full" value={form.stage_id} onChange={set('stage_id')}>
+                <option value="">— Χωρίς στάδιο —</option>
+                {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
           </div>
 
           <div>

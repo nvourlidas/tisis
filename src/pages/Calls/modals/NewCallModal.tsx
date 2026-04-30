@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, PhoneIncoming, PhoneOutgoing, Search, AlertCircle, UserCheck, UserPlus } from 'lucide-react';
+import { X, PhoneIncoming, PhoneOutgoing, Search, AlertCircle, UserCheck, UserPlus, CheckSquare, Pencil } from 'lucide-react';
 import { useAuth } from '../../../auth';
 import { createCall, searchContactsForCall, searchCasesForCall } from '../callUtils';
 import { createContact } from '../../Contacts/contactUtils';
+import { createTask } from '../../Tasks/taskUtils';
+import TaskForm, { type TaskFormValues } from '../../Tasks/TaskForm';
 import type { CallFormData } from '../types';
 
 type ContactHit = { id: string; name: string; phone: string | null };
@@ -34,6 +36,9 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
   const [form, setForm] = useState<CallFormData>(() => ({ ...empty, phone: initialPhone ?? '' }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [pendingTask, setPendingTask] = useState<TaskFormValues | null>(null);
+  const [taskSaving, setTaskSaving] = useState(false);
 
   // Contact search
   const [contactQuery, setContactQuery] = useState('');
@@ -65,6 +70,8 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
       setCaseOptions([]);
       setShowCaseSearch(false);
       setError(null);
+      setPendingTask(null);
+      setShowTaskModal(false);
       setTimeout(() => contactInputRef.current?.focus(), 50);
     }
   }, [open, initialPhone]);
@@ -149,6 +156,18 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
       }
 
       const callId = await createCall(tenantId, finalForm);
+      if (form.create_task && pendingTask) {
+        await createTask(tenantId, {
+          title: pendingTask.title,
+          description: pendingTask.description,
+          due_date: pendingTask.due_date,
+          case_id: pendingTask.case_id || finalForm.case_id,
+          category: pendingTask.category || undefined,
+          extra_data: pendingTask.extra_data,
+          fee: pendingTask.fee,
+          expenses: pendingTask.expenses,
+        });
+      }
       onCreated?.(callId);
       onClose();
     } catch (err: any) {
@@ -158,12 +177,41 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
     }
   };
 
+  const handleTaskSubmit = (values: TaskFormValues) => {
+    setPendingTask(values);
+    setShowTaskModal(false);
+  };
+
   if (!open) return null;
 
   const showCreateNew = showContactDrop && contactQuery.trim().length >= 2 && !searchingContacts && contactResults.length === 0;
   const showDropdown = showContactDrop && (searchingContacts || contactResults.length > 0 || showCreateNew);
 
   return (
+    <>
+    {showTaskModal && (
+      <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border/10">
+            <h2 className="text-base font-semibold text-text-primary">Νέα Εργασία</h2>
+            <button onClick={() => { setShowTaskModal(false); if (!pendingTask) set('create_task', false); }} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="p-6">
+            <TaskForm
+              tenantId={tenantId}
+              initial={pendingTask ?? { case_id: form.case_id }}
+              saving={taskSaving}
+              error={null}
+              onSubmit={handleTaskSubmit}
+              onCancel={() => { setShowTaskModal(false); if (!pendingTask) set('create_task', false); }}
+              submitLabel="Αποθήκευση Εργασίας"
+            />
+          </div>
+        </div>
+      </div>
+    )}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/10 sticky top-0 bg-secondary-background z-10">
@@ -372,29 +420,39 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
                 type="checkbox"
                 className="rounded border-border/20 cursor-pointer"
                 checked={form.create_task}
-                onChange={(e) => set('create_task', e.target.checked)}
+                onChange={(e) => {
+                  set('create_task', e.target.checked);
+                  if (e.target.checked) setShowTaskModal(true);
+                  else setPendingTask(null);
+                }}
               />
               <span className="text-sm text-text-secondary">Δημιουργία εργασίας από αυτή την κλήση</span>
             </label>
             {form.create_task && (
-              <div className="space-y-2 pt-1 pl-6">
-                <input
-                  className="input w-full"
-                  placeholder="Τίτλος εργασίας *"
-                  value={form.task_title}
-                  onChange={(e) => set('task_title', e.target.value)}
-                  required={form.create_task}
-                  autoFocus
-                />
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">Προθεσμία</label>
-                  <input
-                    type="date"
-                    className="input w-full"
-                    value={form.task_due_date}
-                    onChange={(e) => set('task_due_date', e.target.value)}
-                  />
-                </div>
+              <div className="pl-6">
+                {pendingTask ? (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckSquare className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span className="text-sm text-text-primary truncate">{pendingTask.title}</span>
+                      {pendingTask.due_date && (
+                        <span className="text-xs text-text-secondary shrink-0">{pendingTask.due_date}</span>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => setShowTaskModal(true)} className="shrink-0 text-text-secondary hover:text-primary cursor-pointer">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowTaskModal(true)}
+                    className="w-full flex items-center gap-2 rounded-lg border border-dashed border-border/20 bg-white/2 px-3 py-2 text-sm text-text-secondary hover:border-border/40 hover:bg-white/4 transition-all cursor-pointer"
+                  >
+                    <CheckSquare className="h-4 w-4" />
+                    Ρύθμιση εργασίας…
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -410,5 +468,6 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
         </form>
       </div>
     </div>
+    </>
   );
 }

@@ -12,6 +12,19 @@ const MONTH_NAMES = [
 ];
 const DAY_NAMES = ['Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ', 'Κυρ'];
 
+type CalendarView = 'month' | 'week' | 'day';
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function weekStart(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
 const CATEGORY_COLORS: Record<TaskCategory, string> = {
   legal_act: 'bg-blue-500/15 text-blue-400',
   extrajudicial: 'bg-purple-500/15 text-purple-400',
@@ -37,9 +50,11 @@ export default function CaseTasks({ caseId }: Props) {
 
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
 
+  const [view, setView] = useState<CalendarView>('month');
   const [year, setYear] = useState(todayDate.getFullYear());
   const [month, setMonth] = useState(todayDate.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(todayStr);
+  const [anchor, setAnchor] = useState<string>(todayStr);
 
   const load = () => {
     setLoading(true);
@@ -123,6 +138,17 @@ export default function CaseTasks({ caseId }: Props) {
     setYear(todayDate.getFullYear());
     setMonth(todayDate.getMonth());
     setSelectedDay(todayStr);
+    setAnchor(todayStr);
+  };
+  const prevPeriod = () => {
+    if (view === 'week') setAnchor(a => addDays(a, -7));
+    else if (view === 'day') setAnchor(a => addDays(a, -1));
+    else prevMonth();
+  };
+  const nextPeriod = () => {
+    if (view === 'week') setAnchor(a => addDays(a, 7));
+    else if (view === 'day') setAnchor(a => addDays(a, 1));
+    else nextMonth();
   };
 
   const filteredTasks = useMemo(() =>
@@ -156,6 +182,26 @@ export default function CaseTasks({ caseId }: Props) {
   }
 
   const selectedTasks = selectedDay ? (tasksByDay.get(selectedDay) ?? []) : [];
+
+  const weekDays = useMemo(() => {
+    const start = weekStart(anchor);
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  }, [anchor]);
+
+  const headerTitle = useMemo(() => {
+    if (view === 'month') return `${MONTH_NAMES[month]} ${year}`;
+    if (view === 'week') {
+      const s = new Date(weekDays[0] + 'T00:00:00');
+      const e = new Date(weekDays[6] + 'T00:00:00');
+      const sm = MONTH_NAMES[s.getMonth()];
+      const em = MONTH_NAMES[e.getMonth()];
+      return sm === em
+        ? `${s.getDate()}–${e.getDate()} ${sm} ${e.getFullYear()}`
+        : `${s.getDate()} ${sm} – ${e.getDate()} ${em} ${e.getFullYear()}`;
+    }
+    return new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }, [view, month, year, weekDays, anchor]);
+
   const open = filteredTasks.filter(t => t.status === 'open');
   const done = filteredTasks.filter(t => t.status === 'done');
 
@@ -231,70 +277,147 @@ export default function CaseTasks({ caseId }: Props) {
       ) : (
         <div className="space-y-4">
           <div className="rounded-xl border border-border/10 bg-secondary-background p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-text-primary">{MONTH_NAMES[month]} {year}</h3>
-              <div className="flex items-center gap-1">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold text-text-primary">{headerTitle}</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex rounded-lg border border-border/15 overflow-hidden text-xs">
+                  {(['month', 'week', 'day'] as CalendarView[]).map(v => (
+                    <button key={v} onClick={() => { setView(v); if (v !== 'month') setAnchor(selectedDay ?? todayStr); }}
+                      className={`px-2.5 py-1 cursor-pointer transition-colors ${view === v ? 'bg-primary/20 text-primary font-semibold' : 'text-text-secondary hover:bg-white/5'}`}>
+                      {v === 'month' ? 'Μήνας' : v === 'week' ? 'Εβδομάδα' : 'Ημέρα'}
+                    </button>
+                  ))}
+                </div>
                 <button onClick={goToday} className="px-2 py-1 text-xs text-primary hover:underline cursor-pointer">Σήμερα</button>
-                <button onClick={prevMonth} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
-                <button onClick={nextMonth} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
+                <button onClick={prevPeriod} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
+                <button onClick={nextPeriod} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
               </div>
             </div>
 
-            <div className="grid grid-cols-7 gap-px">
-              {DAY_NAMES.map(d => (
-                <div key={d} className="text-center text-[10px] font-semibold text-text-secondary uppercase tracking-wide py-1">{d}</div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-7 gap-px">
-              {cells.map((day, i) => {
-                if (!day) return <div key={`empty-${i}`} />;
-                const ds = dayStr(day);
-                const dayTasks = tasksByDay.get(ds) ?? [];
-                const isToday = ds === todayStr;
-                const isSelected = ds === selectedDay;
-                return (
-                  <button key={ds} onClick={() => setSelectedDay(isSelected ? null : ds)}
-                    className={['relative min-h-16 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1',
-                      isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
-                      isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}>
-                    <span className={['text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0',
-                      isToday ? 'bg-primary text-white' : 'text-text-secondary'].join(' ')}>{day}</span>
-                    <div className="flex flex-col gap-0.5 overflow-hidden w-full">
-                      {dayTasks.slice(0, 3).map(task => {
-                        const overdue = task.status === 'open' && ds < todayStr;
-                        const done = task.status === 'done';
-                        return (
-                          <span key={task.id} className={['text-[10px] leading-tight px-1 rounded truncate w-full',
-                            done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
-                            overdue ? 'bg-orange-500/15 text-orange-400' :
-                            task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
-                            {task.title}
-                          </span>
-                        );
-                      })}
-                      {dayTasks.length > 3 && <span className="text-[10px] text-text-secondary px-1">+{dayTasks.length - 3} ακόμα</span>}
+            {/* Month view */}
+            {view === 'month' && (<>
+              <div className="grid grid-cols-7 gap-px">
+                {DAY_NAMES.map(d => (
+                  <div key={d} className="text-center text-[10px] font-semibold text-text-secondary uppercase tracking-wide py-1">{d}</div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-px">
+                {cells.map((day, i) => {
+                  if (!day) return <div key={`empty-${i}`} />;
+                  const ds = dayStr(day);
+                  const dayTasks = tasksByDay.get(ds) ?? [];
+                  const isToday = ds === todayStr;
+                  const isSelected = ds === selectedDay;
+                  return (
+                    <button key={ds} onClick={() => setSelectedDay(isSelected ? null : ds)}
+                      className={['relative min-h-16 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1',
+                        isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
+                        isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}>
+                      <span className={['text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0',
+                        isToday ? 'bg-primary text-white' : 'text-text-secondary'].join(' ')}>{day}</span>
+                      <div className="flex flex-col gap-0.5 overflow-hidden w-full">
+                        {dayTasks.slice(0, 3).map(task => {
+                          const overdue = task.status === 'open' && ds < todayStr;
+                          const done = task.status === 'done';
+                          return (
+                            <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full',
+                              done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
+                              overdue ? 'bg-orange-500/15 text-orange-400' :
+                              task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
+                              {task.title}
+                            </span>
+                          );
+                        })}
+                        {dayTasks.length > 3 && <span className="text-xs text-text-secondary px-1">+{dayTasks.length - 3} ακόμα</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedDay && (
+                <div className="border-t border-border/10 pt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-text-primary">
+                      {new Date(selectedDay + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                    </h4>
+                    <button onClick={() => setSelectedDay(null)} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {selectedTasks.length === 0 ? (
+                    <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedTasks.map(task => (
+                        <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} />
+                      ))}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {selectedDay && (
-              <div className="border-t border-border/10 pt-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-text-primary">
-                    {new Date(selectedDay + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                  </h4>
-                  <button onClick={() => setSelectedDay(null)} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                  )}
                 </div>
-                {selectedTasks.length === 0 ? (
+              )}
+            </>)}
+
+            {/* Week view */}
+            {view === 'week' && (<>
+              <div className="grid grid-cols-7 gap-1">
+                {weekDays.map(ds => {
+                  const d = new Date(ds + 'T00:00:00');
+                  const dayTasks = tasksByDay.get(ds) ?? [];
+                  const isToday = ds === todayStr;
+                  const isSelected = ds === anchor;
+                  return (
+                    <div key={ds} onClick={() => setAnchor(ds)}
+                      className={['rounded-lg p-2 flex flex-col gap-1 min-h-36 cursor-pointer transition-colors',
+                        isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
+                        isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}>
+                      <div className="flex flex-col items-center pb-1 border-b border-border/10">
+                        <span className="text-[10px] font-semibold text-text-secondary uppercase">{DAY_NAMES[(d.getDay() + 6) % 7]}</span>
+                        <span className={['text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full',
+                          isToday ? 'bg-primary text-white' : 'text-text-primary'].join(' ')}>{d.getDate()}</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 overflow-hidden">
+                        {dayTasks.map(task => {
+                          const overdue = task.status === 'open' && ds < todayStr;
+                          const done = task.status === 'done';
+                          return (
+                            <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block',
+                              done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
+                              overdue ? 'bg-orange-500/15 text-orange-400' :
+                              task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
+                              {task.title}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="border-t border-border/10 pt-3 space-y-2">
+                <h4 className="text-sm font-semibold text-text-primary">
+                  {new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </h4>
+                {(tasksByDay.get(anchor) ?? []).length === 0 ? (
                   <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
                 ) : (
                   <div className="space-y-2">
-                    {selectedTasks.map(task => (
+                    {(tasksByDay.get(anchor) ?? []).map(task => (
+                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>)}
+
+            {/* Day view */}
+            {view === 'day' && (
+              <div className="space-y-2">
+                {(tasksByDay.get(anchor) ?? []).length === 0 ? (
+                  <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {(tasksByDay.get(anchor) ?? []).map(task => (
                       <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} />
                     ))}
                   </div>

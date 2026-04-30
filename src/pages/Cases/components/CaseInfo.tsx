@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Pencil, Check, X, ExternalLink } from 'lucide-react';
 import { formatDate } from '../../../lib/dateUtils';
-import { updateCase } from '../caseUtils';
+import { updateCase, fetchStages } from '../caseUtils';
 import { fetchClients } from '../../Clients/clientUtils';
 import type { Client } from '../../Clients/types';
-import type { Case, CaseFormData, CaseType } from '../types';
+import type { Case, CaseFormData, CaseStage, CaseType } from '../types';
 
 const CASE_TYPES: CaseType[] = ['Αστικό', 'Ποινικό', 'Διοικητικό', 'Εμπορικό'];
 
@@ -18,6 +18,7 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<CaseFormData>>({});
   const [clients, setClients] = useState<Client[]>([]);
+  const [stages, setStages] = useState<CaseStage[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +29,7 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
       client_id: caseData.client_id ?? '',
       status: caseData.status,
       type: caseData.type ?? '',
-      stage: caseData.stage ?? '',
+      stage_id: caseData.stage_id ?? '',
       description: caseData.description ?? '',
       next_critical_date: caseData.next_critical_date ?? '',
       google_drive_url: caseData.google_drive_url ?? '',
@@ -36,7 +37,10 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
     });
     setEditing(true);
     setError(null);
-    if (tenantId) fetchClients(tenantId).then(setClients);
+    if (tenantId) {
+      fetchClients(tenantId).then(setClients);
+      fetchStages(tenantId).then(setStages);
+    }
   };
 
   const cancelEdit = () => { setEditing(false); setError(null); };
@@ -47,7 +51,8 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
     try {
       await updateCase(caseData.id, form);
       const clientName = clients.find((c) => c.id === form.client_id)?.name ?? caseData.client_name ?? null;
-      onUpdate({ ...caseData, ...form, client_name: clientName } as Case);
+      const stageName = stages.find((s) => s.id === form.stage_id)?.name ?? null;
+      onUpdate({ ...caseData, ...form, client_name: clientName, stage_name: stageName } as Case);
       setEditing(false);
     } catch (err: any) {
       setError(err?.message ?? 'Αποτυχία αποθήκευσης.');
@@ -107,7 +112,10 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
           </div>
           <div>
             <label className="block text-xs text-text-secondary mb-1">Στάδιο</label>
-            <input className="input w-full" value={form.stage ?? ''} onChange={set('stage')} placeholder="π.χ. Α΄ Βαθμός" />
+            <select className="input w-full" value={form.stage_id ?? ''} onChange={set('stage_id')}>
+              <option value="">— Χωρίς στάδιο —</option>
+              {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-xs text-text-secondary mb-1">Επόμενη Κρίσιμη Ημερομηνία</label>
@@ -141,7 +149,7 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
       <div className="rounded-xl border border-border/10 bg-secondary-background divide-y divide-border/10">
         <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <InfoField label="Τύπος Υπόθεσης" value={caseData.type} />
-          <InfoField label="Στάδιο" value={caseData.stage} />
+          <InfoField label="Στάδιο" value={caseData.stage_name} />
           <InfoField
             label="Επόμενη Κρίσιμη Ημερομηνία"
             value={caseData.next_critical_date

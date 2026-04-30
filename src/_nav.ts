@@ -7,6 +7,7 @@ import {
   BookUser,
   Phone,
   CheckSquare,
+  TrendingUp,
 } from 'lucide-react';
 
 export type PlanTier = 'free' | 'starter' | 'pro';
@@ -53,6 +54,7 @@ export const NAV: NavEntry[] = [
   { type: 'item', label: 'Επαφές', to: '/contacts', icon: BookUser },
   { type: 'item', label: 'Κλήσεις', to: '/calls', icon: Phone },
   { type: 'item', label: 'Εργασίες', to: '/tasks', icon: CheckSquare },
+  { type: 'item', label: 'Οικονομικά', to: '/finances', icon: TrendingUp },
 
   { type: 'section', title: 'Ρυθμίσεις' },
   {
@@ -62,7 +64,6 @@ export const NAV: NavEntry[] = [
     roles: ['owner', 'admin'],
     children: [
       { label: 'Ομάδα', to: '/settings/users', roles: ['owner', 'admin'] },
-      { label: 'Ρόλοι Επαφών', to: '/settings/contact-roles', roles: ['owner', 'admin'] },
     ],
   },
 ];

@@ -1,39 +1,71 @@
 import { supabase } from '../../lib/supabase';
-import type { Case, CaseFormData, CaseContact, CaseCall, CaseTask, CaseFinancial, CaseStatus } from './types';
+import type { Case, CaseFormData, CaseContact, CaseCall, CaseTask, CaseFinancial, CaseStatus, CaseStage } from './types';
+
+const CASE_SELECT = '*, clients(name), case_stages(name)';
+function mapCase(r: any): Case {
+  return { ...r, client_name: r.clients?.name ?? null, stage_name: r.case_stages?.name ?? null };
+}
 
 export async function fetchCases(tenantId: string, status?: CaseStatus): Promise<Case[]> {
   let q = supabase
     .from('cases')
-    .select('*, clients(name)')
+    .select(CASE_SELECT)
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false });
   if (status) q = q.eq('status', status);
   const { data, error } = await q;
   if (error) throw error;
-  return (data ?? []).map((r: any) => ({ ...r, client_name: r.clients?.name ?? null }));
+  return (data ?? []).map(mapCase);
 }
 
 export async function fetchCase(id: string): Promise<Case | null> {
   const { data, error } = await supabase
     .from('cases')
-    .select('*, clients(name)')
+    .select(CASE_SELECT)
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return { ...data, client_name: (data as any).clients?.name ?? null };
+  return mapCase(data);
 }
 
 export async function searchCases(tenantId: string, query: string): Promise<Case[]> {
   const { data, error } = await supabase
     .from('cases')
-    .select('*, clients(name)')
+    .select(CASE_SELECT)
     .eq('tenant_id', tenantId)
     .or(`code.ilike.%${query}%,title.ilike.%${query}%`)
     .order('created_at', { ascending: false })
     .limit(30);
   if (error) throw error;
-  return (data ?? []).map((r: any) => ({ ...r, client_name: r.clients?.name ?? null }));
+  return (data ?? []).map(mapCase);
+}
+
+// --- Stages ---
+export async function fetchStages(tenantId: string): Promise<CaseStage[]> {
+  const { data, error } = await supabase
+    .from('case_stages')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('position', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createStage(tenantId: string, name: string, position = 0): Promise<CaseStage> {
+  const { data, error } = await supabase
+    .from('case_stages')
+    .insert({ tenant_id: tenantId, name, position })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteStage(id: string): Promise<void> {
+  const { error } = await supabase.from('case_stages').delete().eq('id', id);
+  if (error) throw error;
 }
 
 export async function createCase(_tenantId: string, form: CaseFormData): Promise<Case> {
@@ -43,7 +75,11 @@ export async function createCase(_tenantId: string, form: CaseFormData): Promise
 }
 
 export async function updateCase(id: string, form: Partial<CaseFormData>): Promise<void> {
-  const { error } = await supabase.functions.invoke('case-update', { body: { id, ...form } });
+  const sanitized: Record<string, unknown> = { id };
+  for (const [k, v] of Object.entries(form)) {
+    sanitized[k] = v === '' ? null : v;
+  }
+  const { error } = await supabase.functions.invoke('case-update', { body: sanitized });
   if (error) throw error;
 }
 
