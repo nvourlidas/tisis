@@ -9,6 +9,7 @@ import CaseContacts from './components/CaseContacts';
 import CaseCalls from './components/CaseCalls';
 import CaseTasks from './components/CaseTasks';
 import CaseFinancials from './components/CaseFinancials';
+import CaseFiles from './components/CaseFiles';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Ενεργή',
@@ -22,7 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
   closed: 'bg-border/20 text-text-secondary',
 };
 
-type Tab = 'info' | 'contacts' | 'calls' | 'tasks' | 'financials';
+type Tab = 'info' | 'contacts' | 'calls' | 'tasks' | 'financials' | 'files';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'info', label: 'Πληροφορίες' },
@@ -30,6 +31,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'calls', label: 'Κλήσεις' },
   { id: 'tasks', label: 'Εργασίες' },
   { id: 'financials', label: 'Οικονομικά' },
+  { id: 'files', label: 'Αρχεία' },
 ];
 
 export default function CaseDetail() {
@@ -101,6 +103,18 @@ export default function CaseDetail() {
         {tab === 'calls' && <CaseCalls caseId={caseData.id} tenantId={tenantId} />}
         {tab === 'tasks' && <CaseTasks caseId={caseData.id} tenantId={tenantId} />}
         {tab === 'financials' && <CaseFinancials caseId={caseData.id} tenantId={tenantId} />}
+        {tab === 'files' && (
+          <CaseFiles
+            caseId={caseData.id}
+            caseCode={caseData.code}
+            caseTitle={caseData.title}
+            folderId={caseData.google_drive_folder_id ?? null}
+            folderUrl={caseData.google_drive_url ?? null}
+            onFolderCreated={(folderId, folderUrl) =>
+              setCaseData((prev) => prev ? { ...prev, google_drive_folder_id: folderId, google_drive_url: folderUrl } : prev)
+            }
+          />
+        )}
       </div>
     </div>
   );

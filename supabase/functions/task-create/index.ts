@@ -1,4 +1,5 @@
 import { corsHeaders, json, authenticate } from '../_shared/auth.ts'
+import { syncCalendar } from '../_shared/calendarSync.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -26,6 +27,11 @@ Deno.serve(async (req) => {
       })
       .select().single()
     if (error) return json({ error: error.message }, 400)
+    await syncCalendar(
+      Deno.env.get('SUPABASE_URL')!,
+      req.headers.get('Authorization')!,
+      { action: 'create', taskId: data.id, title: data.title, description: data.description, due_date: data.due_date },
+    )
     return json(data)
   } catch (e) { return json({ error: e.message }, 500) }
 })

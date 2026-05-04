@@ -7,14 +7,16 @@ import { fetchCases, createCase, searchCases } from './caseUtils';
 import type { Case, CaseFormData, CaseStatus, CaseType } from './types';
 
 const TYPE_COLORS: Record<CaseType, string> = {
-  'Αστικό':      'bg-blue-500/15 text-blue-400',
-  'Ποινικό':     'bg-red-500/15 text-red-400',
-  'Διοικητικό':  'bg-purple-500/15 text-purple-400',
-  'Εμπορικό':    'bg-orange-500/15 text-orange-400',
+  'Αστικό': 'bg-blue-500/15 text-blue-400',
+  'Ποινικό': 'bg-red-500/15 text-red-400',
+  'Διοικητικό': 'bg-purple-500/15 text-purple-400',
+  'Εμπορικό': 'bg-orange-500/15 text-orange-400',
 };
 import NewCaseModal from './modals/NewCaseModal';
 import StagesModal from './modals/StagesModal';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
+import { fetchStages } from './caseUtils';
+import type { CaseStage } from './types';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Ενεργή',
@@ -99,8 +101,16 @@ export default function Cases() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterStatus>('all');
+  const [typeFilter, setTypeFilter] = useState<CaseType | 'all'>('all');
+  const [stageFilter, setStageFilter] = useState<string>('all');
+  const [stages, setStages] = useState<CaseStage[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showStages, setShowStages] = useState(false);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    fetchStages(tenantId).then(setStages);
+  }, [tenantId]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -124,12 +134,13 @@ export default function Cases() {
     navigate(`/cases/${created.id}`);
   };
 
-  const filters: { value: FilterStatus; label: string }[] = [
-    { value: 'all', label: 'Όλες' },
-    { value: 'active', label: 'Ενεργές' },
-    { value: 'pending', label: 'Εκκρεμείς' },
-    { value: 'closed', label: 'Κλειστές' },
-  ];
+  const CASE_TYPES: CaseType[] = ['Αστικό', 'Ποινικό', 'Διοικητικό', 'Εμπορικό'];
+
+  const visibleCases = cases.filter((c) => {
+    if (typeFilter !== 'all' && c.type !== typeFilter) return false;
+    if (stageFilter !== 'all' && (c.stage_id ?? 'none') !== stageFilter) return false;
+    return true;
+  });
 
   return (
     <div className="p-6 space-y-4">
@@ -147,31 +158,33 @@ export default function Cases() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {filters.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className={[
-              'px-3 py-1.5 rounded-full text-sm font-medium transition-all cursor-pointer',
-              filter === f.value
-                ? 'bg-primary/15 text-primary border border-primary/20'
-                : 'bg-white/5 text-text-secondary border border-border/10 hover:bg-white/8 hover:text-text-primary',
-            ].join(' ')}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
-        <input
-          className="input w-full pl-9!"
-          placeholder="Αναζήτηση με κωδικό, τίτλο…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+      {/* Filters + search on one line */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
+          <input
+            className="input w-full pl-9!"
+            placeholder="Αναζήτηση με κωδικό, τίτλο…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <select className="input w-auto" value={filter} onChange={(e) => setFilter(e.target.value as FilterStatus)}>
+          <option value="all">Όλες οι καταστάσεις</option>
+          <option value="active">Ενεργές</option>
+          <option value="pending">Εκκρεμείς</option>
+          <option value="closed">Κλειστές</option>
+        </select>
+        <select className="input w-auto" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as CaseType | 'all')}>
+          <option value="all">Όλοι οι τύποι</option>
+          {CASE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        {stages.length > 0 && (
+          <select className="input w-auto" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
+            <option value="all">Όλα τα στάδια</option>
+            {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        )}
       </div>
 
       {loading ? (
@@ -180,7 +193,7 @@ export default function Cases() {
         <DataTable
           tableId="cases"
           columns={COLUMNS}
-          data={cases}
+          data={visibleCases}
           rowKey={(c) => c.id}
           onRowClick={(c) => navigate(`/cases/${c.id}`)}
           emptyState={

@@ -50,9 +50,19 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
         if (mounted) setAuthReady(true);
       }
     })();
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, s) => {
       setSession(s);
       loadProfile(s);
+      // Capture Google refresh token immediately after OAuth sign-in
+      if (event === 'SIGNED_IN' && s?.provider_refresh_token) {
+        const googleEmail = s.user?.email ?? null;
+        supabase.rpc('upsert_google_token', {
+          p_refresh_token: s.provider_refresh_token,
+          p_google_email: googleEmail,
+        }).then(({ error }) => {
+          if (error) console.warn('Failed to store Google token:', error.message);
+        });
+      }
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);

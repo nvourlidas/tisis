@@ -11,6 +11,7 @@ Deno.serve(async (req) => {
       father_name, mother_name, birthdate, amka, iban, at, taxis_username, taxis_password,
     } = await req.json()
     if (!name?.trim()) return json({ error: 'Name is required' }, 400)
+
     const { data, error } = await supabase
       .from('contacts')
       .insert({
@@ -37,6 +38,26 @@ Deno.serve(async (req) => {
       .select()
       .single()
     if (error) return json({ error: error.message }, 400)
+
+    // Await Google sync so it completes before the function exits
+    try {
+      const authHeader = req.headers.get('Authorization')!
+      await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/google-contact-sync`, {
+        method: 'POST',
+        headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          contactId: data.id,
+          name: data.name,
+          phone: data.phone,
+          phone2: data.phone2,
+          email: data.email,
+        }),
+      })
+    } catch (e: any) {
+      console.warn('Google sync failed:', e.message)
+    }
+
     return json(data)
-  } catch (e) { return json({ error: e.message }, 500) }
+  } catch (e: any) { return json({ error: e.message }, 500) }
 })

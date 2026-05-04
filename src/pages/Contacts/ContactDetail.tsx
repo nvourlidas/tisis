@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, Tag, FileText, MapPin, Pencil, Check, X, UserCheck, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, Tag, FileText, MapPin, Pencil, Check, X, UserCheck, ExternalLink, Trash2 } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
-import { fetchContact, fetchContactCases, updateContact, fetchLinkedClient, promoteContactToClient } from './contactUtils';
+import { fetchContact, fetchContactCases, updateContact, deleteContact, fetchLinkedClient, promoteContactToClient } from './contactUtils';
 import type { Contact, ContactCase } from './types';
 import type { Client } from '../Clients/types';
 import RoleSelect from '../../components/RoleSelect';
@@ -34,6 +34,8 @@ export default function ContactDetail() {
   const [form, setForm] = useState<Partial<Contact>>({});
   const [saving, setSaving] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,6 +74,20 @@ export default function ContactDetail() {
       setError(err?.message ?? 'Αποτυχία αποθήκευσης.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!id) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteContact(id);
+      navigate('/contacts');
+    } catch (err: any) {
+      setError(err?.message ?? 'Αποτυχία διαγραφής.');
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -137,8 +153,21 @@ export default function ContactDetail() {
               <button onClick={cancelEdit} className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><X className="h-3.5 w-3.5" />Ακύρωση</button>
               <button onClick={saveEdit} disabled={saving} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer"><Check className="h-3.5 w-3.5" />{saving ? 'Αποθήκευση…' : 'Αποθήκευση'}</button>
             </>
+          ) : confirmDelete ? (
+            <>
+              <span className="text-sm text-text-secondary">Σίγουρα;</span>
+              <button onClick={() => setConfirmDelete(false)} className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><X className="h-3.5 w-3.5" />Ακύρωση</button>
+              <button onClick={handleDelete} disabled={deleting} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-danger/10 text-danger hover:bg-danger/20 transition-colors cursor-pointer disabled:opacity-50">
+                <Trash2 className="h-3.5 w-3.5" />{deleting ? 'Διαγραφή…' : 'Διαγραφή'}
+              </button>
+            </>
           ) : (
-            <button onClick={startEdit} className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><Pencil className="h-3.5 w-3.5" />Επεξεργασία</button>
+            <>
+              <button onClick={() => setConfirmDelete(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-text-secondary hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer">
+                <Trash2 className="h-3.5 w-3.5" />Διαγραφή
+              </button>
+              <button onClick={startEdit} className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><Pencil className="h-3.5 w-3.5" />Επεξεργασία</button>
+            </>
           )}
         </div>
       </div>

@@ -20,6 +20,7 @@ export type Case = {
   description: string | null;
   next_critical_date: string | null;
   google_drive_url: string | null;
+  google_drive_folder_id: string | null;
   notes: string | null;
   type: CaseType | null;
   created_at: string;
