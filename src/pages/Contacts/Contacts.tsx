@@ -1,17 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Users, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchContacts, createContact, searchContacts } from './contactUtils';
+import { fetchContactRoles } from '../../lib/roleUtils';
 import type { Contact, ContactFormData } from './types';
+import type { ContactRole } from '../../lib/roleUtils';
 import NewContactModal from './modals/NewContactModal';
 import RolesModal from './modals/RolesModal';
 import GoogleImportModal from './modals/GoogleImportModal';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
 
-const COLUMNS: ColumnDef<Contact>[] = [
+function makeColumns(roleMap: Map<string, ContactRole>): ColumnDef<Contact>[] {
+  return [
   {
     key: 'name',
     header: 'Όνομα',
@@ -28,7 +31,22 @@ const COLUMNS: ColumnDef<Contact>[] = [
   {
     key: 'role',
     header: 'Ρόλος',
-    render: (c) => <span className="text-text-secondary">{c.role ?? '—'}</span>,
+    render: (c) => {
+      if (!c.role) return <span className="text-text-secondary">—</span>;
+      const role = roleMap.get(c.role);
+      if (role) {
+        return (
+          <span
+            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+            style={{ backgroundColor: role.color + '25', color: role.color }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+            {c.role}
+          </span>
+        );
+      }
+      return <span className="text-text-secondary">{c.role}</span>;
+    },
     sortValue: (c) => c.role ?? '',
   },
   {
@@ -121,7 +139,8 @@ const COLUMNS: ColumnDef<Contact>[] = [
     sortValue: (c) => c.taxis_username ?? '',
     defaultVisible: false,
   },
-];
+  ];
+}
 
 export default function Contacts() {
   const { profile } = useAuth();
@@ -129,6 +148,9 @@ export default function Contacts() {
   const tenantId = profile?.tenant_id ?? '';
 
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [roles, setRoles] = useState<ContactRole[]>([]);
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [clientFilter, setClientFilter] = useState<'all' | 'clients' | 'non-clients'>('all');
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -140,8 +162,23 @@ export default function Contacts() {
   useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
-    fetchContacts(tenantId).then(setContacts).finally(() => setLoading(false));
+    Promise.all([
+      fetchContacts(tenantId),
+      fetchContactRoles(tenantId),
+    ]).then(([c, r]) => { setContacts(c); setRoles(r); }).finally(() => setLoading(false));
   }, [tenantId]);
+
+  const roleMap = useMemo(() => new Map(roles.map(r => [r.name, r])), [roles]);
+  const columns = useMemo(() => makeColumns(roleMap), [roleMap]);
+  const visibleContacts = useMemo(() =>
+    contacts.filter(c => {
+      if (roleFilter !== 'all' && c.role !== roleFilter) return false;
+      if (clientFilter === 'clients' && !c.is_client) return false;
+      if (clientFilter === 'non-clients' && c.is_client) return false;
+      return true;
+    }),
+    [contacts, roleFilter, clientFilter]
+  );
 
   useEffect(() => {
     if (!tenantId) return;
@@ -214,14 +251,27 @@ export default function Contacts() {
         </div>
       )}
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
-        <input
-          className="input w-full pl-9!"
-          placeholder="Αναζήτηση με όνομα, τηλέφωνο ή email…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
+          <input
+            className="input w-full pl-9!"
+            placeholder="Αναζήτηση με όνομα, τηλέφωνο ή email…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <select className="input w-auto" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+          <option value="all">Όλοι οι ρόλοι</option>
+          {roles.map(r => (
+            <option key={r.id} value={r.name}>{r.name}</option>
+          ))}
+        </select>
+        <select className="input w-auto" value={clientFilter} onChange={(e) => setClientFilter(e.target.value as typeof clientFilter)}>
+          <option value="all">Όλες οι επαφές</option>
+          <option value="clients">Μόνο εντολείς</option>
+          <option value="non-clients">Μη εντολείς</option>
+        </select>
       </div>
 
       {loading ? (
@@ -229,8 +279,8 @@ export default function Contacts() {
       ) : (
         <DataTable
           tableId="contacts"
-          columns={COLUMNS}
-          data={contacts}
+          columns={columns}
+          data={visibleContacts}
           rowKey={(c) => c.id}
           onRowClick={(c) => navigate(`/contacts/${c.id}`)}
           emptyState={
@@ -243,7 +293,7 @@ export default function Contacts() {
       )}
 
       <NewContactModal open={showCreate} onClose={() => setShowCreate(false)} onSubmit={handleCreate} tenantId={tenantId} />
-      <RolesModal open={showRoles} onClose={() => setShowRoles(false)} tenantId={tenantId} />
+      <RolesModal open={showRoles} onClose={() => { setShowRoles(false); fetchContactRoles(tenantId).then(setRoles); }} tenantId={tenantId} />
       <GoogleImportModal
         open={showGoogleImport}
         onClose={() => setShowGoogleImport(false)}

@@ -4,8 +4,10 @@ import { ArrowLeft, Phone, Mail, Tag, FileText, MapPin, Pencil, Check, X, UserCh
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchContact, fetchContactCases, updateContact, deleteContact, fetchLinkedClient, promoteContactToClient } from './contactUtils';
+import { fetchContactRoles } from '../../lib/roleUtils';
 import type { Contact, ContactCase } from './types';
 import type { Client } from '../Clients/types';
+import type { ContactRole } from '../../lib/roleUtils';
 import RoleSelect from '../../components/RoleSelect';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -37,19 +39,21 @@ export default function ContactDetail() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [roles, setRoles] = useState<ContactRole[]>([]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !tenantId) return;
     setLoading(true);
-    Promise.all([fetchContact(id), fetchContactCases(id)])
-      .then(([c, cc]) => {
+    Promise.all([fetchContact(id), fetchContactCases(id), fetchContactRoles(tenantId)])
+      .then(([c, cc, r]) => {
         setContact(c);
         setForm(c ?? {});
         setCases(cc);
+        setRoles(r);
         if (c?.is_client) fetchLinkedClient(id).then(setLinkedClient);
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, tenantId]);
 
   const startEdit = () => { setForm(contact ?? {}); setEditing(true); setError(null); };
   const cancelEdit = () => { setEditing(false); setError(null); };
@@ -133,9 +137,20 @@ export default function ContactDetail() {
               )}
             </div>
           )}
-          {contact.role && !editing && (
-            <p className="text-sm text-text-secondary mt-0.5">{contact.role}</p>
-          )}
+          {contact.role && !editing && (() => {
+            const role = roles.find(r => r.name === contact.role);
+            return role ? (
+              <span
+                className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                style={{ backgroundColor: role.color + '25', color: role.color }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+                {contact.role}
+              </span>
+            ) : (
+              <p className="text-sm text-text-secondary mt-0.5">{contact.role}</p>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {!editing && !contact.is_client && (
@@ -231,7 +246,26 @@ export default function ContactDetail() {
             {contact.phone && <InfoRow icon={<Phone className="h-4 w-4" />} label="Τηλέφωνο" value={contact.phone} />}
             {contact.phone2 && <InfoRow icon={<Phone className="h-4 w-4" />} label="Τηλέφωνο 2" value={contact.phone2} />}
             {contact.email && <InfoRow icon={<Mail className="h-4 w-4" />} label="Email" value={contact.email} />}
-            {contact.role && <InfoRow icon={<Tag className="h-4 w-4" />} label="Ρόλος" value={contact.role} />}
+            {contact.role && (() => {
+              const role = roles.find(r => r.name === contact.role);
+              return role ? (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-text-secondary mt-0.5 shrink-0"><Tag className="h-4 w-4" /></span>
+                  <div>
+                    <div className="text-xs text-text-secondary">Ρόλος</div>
+                    <span
+                      className="inline-flex items-center gap-1.5 mt-0.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                      style={{ backgroundColor: role.color + '25', color: role.color }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+                      {contact.role}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <InfoRow icon={<Tag className="h-4 w-4" />} label="Ρόλος" value={contact.role} />
+              );
+            })()}
             {contact.address && <InfoRow icon={<MapPin className="h-4 w-4" />} label="Διεύθυνση" value={contact.address} />}
             {contact.vat && <InfoRow icon={<FileText className="h-4 w-4" />} label="ΑΦΜ" value={contact.vat} />}
             {contact.father_name && <InfoRow icon={<FileText className="h-4 w-4" />} label="Όνομα πατρός" value={contact.father_name} />}

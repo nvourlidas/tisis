@@ -24,6 +24,8 @@ export default function RoleSelect({ tenantId, value, onChange, placeholder = 'Î
     setOpen(false);
   };
 
+  const selectedRole = roles.find(r => r.name === value);
+
   return (
     <div className="relative">
       <button
@@ -31,7 +33,10 @@ export default function RoleSelect({ tenantId, value, onChange, placeholder = 'Î
         onClick={() => setOpen(v => !v)}
         className="input w-full flex items-center justify-between gap-2 cursor-pointer text-left"
       >
-        <span className={value ? 'text-text-primary' : 'text-text-secondary'}>
+        <span className={`flex items-center gap-1.5 ${value ? 'text-text-primary' : 'text-text-secondary'}`}>
+          {selectedRole && (
+            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: selectedRole.color }} />
+          )}
           {value || placeholder}
         </span>
         <ChevronDown className={`h-3.5 w-3.5 text-text-secondary shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -50,10 +55,11 @@ export default function RoleSelect({ tenantId, value, onChange, placeholder = 'Î
                     key={r.id}
                     type="button"
                     onClick={() => select(r.name)}
-                    className={`w-full px-4 py-2.5 text-left text-sm transition-colors cursor-pointer ${
+                    className={`w-full px-4 py-2.5 text-left text-sm transition-colors cursor-pointer flex items-center gap-2 ${
                       value === r.name ? 'bg-primary/10 text-primary' : 'text-text-primary hover:bg-white/5'
                     }`}
                   >
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
                     {r.name}
                   </button>
                 ))}
