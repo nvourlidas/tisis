@@ -5,20 +5,9 @@ import { useAuth } from '../auth';
 import { NAV, type NavEntry } from '../_nav';
 import type { LucideIcon } from 'lucide-react';
 import { LogOut, Menu, ChevronDown, Sun, Moon, Crown, Zap } from 'lucide-react';
+import { useTheme, type ThemeMode } from '../lib/useTheme';
 
 type Tenant = { name: string };
-type ThemeMode = 'light' | 'dark';
-
-function getInitialTheme(): ThemeMode {
-  const saved = localStorage.getItem('theme');
-  if (saved === 'dark' || saved === 'light') return saved;
-  return 'dark';
-}
-
-function applyTheme(mode: ThemeMode) {
-  document.documentElement.dataset.theme = mode;
-  localStorage.setItem('theme', mode);
-}
 
 type PlanTier = 'free' | 'starter' | 'pro';
 
@@ -43,9 +32,7 @@ export default function AppShell() {
   const { profile } = useAuth();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
-
-  useEffect(() => { applyTheme(theme); }, [theme]);
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     (async () => {
@@ -57,19 +44,17 @@ export default function AppShell() {
   }, [profile?.tenant_id]);
 
 
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-
   return (
     <div className="min-h-screen bg-background text-text-primary flex">
 
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-60 lg:bg-secondary-background lg:border-r lg:border-border/10 lg:sticky lg:top-0 lg:h-screen lg:shrink-0">
-        <SidebarNav />
+        <SidebarNav theme={theme} onToggleTheme={toggleTheme} />
       </aside>
 
       {/* Mobile sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-60 bg-secondary-background border-r border-border/10 flex flex-col transform transition-transform duration-200 ease-out lg:hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <SidebarNav />
+        <SidebarNav theme={theme} onToggleTheme={toggleTheme} />
       </aside>
       {sidebarOpen && (
         <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -97,7 +82,7 @@ export default function AppShell() {
                 </div>
               )}
             </div>
-            <UserMenu theme={theme} onToggleTheme={toggleTheme} />
+            <UserMenu />
           </div>
         </header>
 
@@ -109,7 +94,7 @@ export default function AppShell() {
   );
 }
 
-function SidebarNav() {
+function SidebarNav({ theme, onToggleTheme }: { theme: ThemeMode; onToggleTheme: () => void }) {
   const { profile } = useAuth();
   const sidebarDisplayName = profile?.display_name ?? 'Dashboard';
   const role = profile?.role ?? 'member';
@@ -166,7 +151,34 @@ function SidebarNav() {
         })}
       </nav>
 
-      <div className="shrink-0 border-t border-border/10 px-3 py-3">
+      <div className="shrink-0 border-t border-border/10 px-3 py-3 space-y-1">
+        {/* Theme toggle */}
+        <div className="flex gap-1.5 px-1">
+          <button
+            onClick={() => theme !== 'light' && onToggleTheme()}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              theme === 'light'
+                ? 'border border-border/30 bg-secondary-background text-text-primary shadow-sm'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Sun className="h-3.5 w-3.5" />
+            Light
+          </button>
+          <button
+            onClick={() => theme !== 'dark' && onToggleTheme()}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              theme === 'dark'
+                ? 'border border-border/30 bg-secondary-background text-text-primary shadow-sm'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Moon className="h-3.5 w-3.5" />
+            Dark
+          </button>
+        </div>
+
+        {/* User row */}
         <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl">
           <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center text-[11px] font-bold text-primary uppercase shrink-0">
             {(profile?.display_name?.[0] ?? '?')}
@@ -248,7 +260,7 @@ function NavItem({ to, label, end, Icon, nested = false, badge = null }: {
   );
 }
 
-function UserMenu({ theme, onToggleTheme }: { theme: ThemeMode; onToggleTheme: () => void }) {
+function UserMenu() {
   const { profile } = useAuth();
   const displayName = profile?.display_name ?? 'Account';
   const [open, setOpen] = useState(false);
@@ -297,22 +309,6 @@ function UserMenu({ theme, onToggleTheme }: { theme: ThemeMode; onToggleTheme: (
             </div>
             <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-border/10 bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary">
               {profile?.role}
-            </div>
-          </div>
-          <div className="px-4 py-3 border-b border-border/10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-text-primary">
-                {theme === 'dark' ? <Moon className="h-3.5 w-3.5 text-text-secondary" /> : <Sun className="h-3.5 w-3.5 text-text-secondary" />}
-                <span>{theme === 'dark' ? 'Σκούρο' : 'Φωτεινό'}</span>
-              </div>
-              <button type="button" onClick={onToggleTheme}
-                className={['relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 cursor-pointer',
-                  theme === 'dark' ? 'bg-primary' : 'bg-border/20'].join(' ')}
-                aria-label="Toggle theme"
-              >
-                <span className={['inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200',
-                  theme === 'dark' ? 'translate-x-4' : 'translate-x-0.5'].join(' ')} />
-              </button>
             </div>
           </div>
           <div className="p-1.5">

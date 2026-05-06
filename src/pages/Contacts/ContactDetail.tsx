@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, Tag, FileText, MapPin, Pencil, Check, X, UserCheck, ExternalLink, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft, Phone, Mail, Tag, FileText, MapPin, Pencil, Check, X,
+  UserCheck, ExternalLink, Trash2, Users, CalendarDays, ShieldCheck,
+  CreditCard, KeyRound, RotateCcw, Briefcase,
+} from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchContact, fetchContactCases, updateContact, deleteContact, fetchLinkedClient, promoteContactToClient } from './contactUtils';
@@ -16,10 +20,35 @@ const STATUS_LABELS: Record<string, string> = {
   closed: 'Κλειστή',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  active: 'bg-green-500/15 text-green-400',
-  pending: 'bg-yellow-500/15 text-yellow-400',
+const STATUS_DOT: Record<string, string> = {
+  active: 'bg-green-500',
+  pending: 'bg-yellow-500',
+  closed: 'bg-border',
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  active: 'bg-green-500/10 text-green-500',
+  pending: 'bg-yellow-500/10 text-yellow-500',
   closed: 'bg-border/20 text-text-secondary',
+};
+
+type FieldMeta = { icon: React.ReactNode; color: string; bg: string };
+
+const FIELD_META: Record<string, FieldMeta> = {
+  phone:               { icon: <Phone className="h-4 w-4" />,        color: 'text-blue-500',   bg: 'bg-blue-500/10' },
+  phone2:              { icon: <Phone className="h-4 w-4" />,        color: 'text-blue-400',   bg: 'bg-blue-400/10' },
+  email:               { icon: <Mail className="h-4 w-4" />,         color: 'text-purple-500', bg: 'bg-purple-500/10' },
+  address:             { icon: <MapPin className="h-4 w-4" />,       color: 'text-green-500',  bg: 'bg-green-500/10' },
+  vat:                 { icon: <FileText className="h-4 w-4" />,     color: 'text-orange-500', bg: 'bg-orange-500/10' },
+  professional_status: { icon: <Briefcase className="h-4 w-4" />,   color: 'text-teal-500',   bg: 'bg-teal-500/10' },
+  father_name:         { icon: <Users className="h-4 w-4" />,        color: 'text-slate-400',  bg: 'bg-slate-400/10' },
+  mother_name:         { icon: <Users className="h-4 w-4" />,        color: 'text-slate-400',  bg: 'bg-slate-400/10' },
+  birthdate:           { icon: <CalendarDays className="h-4 w-4" />, color: 'text-teal-500',   bg: 'bg-teal-500/10' },
+  amka:                { icon: <ShieldCheck className="h-4 w-4" />,  color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+  iban:                { icon: <CreditCard className="h-4 w-4" />,   color: 'text-green-500',  bg: 'bg-green-500/10' },
+  at:                  { icon: <ShieldCheck className="h-4 w-4" />,  color: 'text-amber-500',  bg: 'bg-amber-500/10' },
+  taxis_username:      { icon: <KeyRound className="h-4 w-4" />,     color: 'text-gray-400',   bg: 'bg-gray-400/10' },
+  taxis_password:      { icon: <KeyRound className="h-4 w-4" />,     color: 'text-gray-400',   bg: 'bg-gray-400/10' },
 };
 
 export default function ContactDetail() {
@@ -113,98 +142,149 @@ export default function ContactDetail() {
   const set = (k: keyof Contact) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  if (loading) return <div className="p-6 text-sm text-text-secondary">Φόρτωση…</div>;
+  if (loading) return (
+    <div className="flex items-center gap-3 p-8 text-sm text-text-secondary animate-pulse-soft">
+      <RotateCcw className="h-4 w-4 animate-spin" /> Φόρτωση επαφής…
+    </div>
+  );
   if (!contact) return <div className="p-6 text-sm text-text-secondary">Η επαφή δεν βρέθηκε.</div>;
+
+  const currentRole = roles.find(r => r.name === contact.role);
 
   return (
     <div className="p-6 space-y-6">
-      <button onClick={() => navigate('/contacts')} className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
+      {/* Back */}
+      <button
+        onClick={() => navigate('/contacts')}
+        className="animate-fade-in inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+      >
         <ArrowLeft className="h-4 w-4" />
         Επαφές
       </button>
 
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          {editing ? (
-            <input className="input text-xl font-bold w-full max-w-sm" value={form.name ?? ''} onChange={set('name')} required />
-          ) : (
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-text-primary">{contact.name}</h1>
-              {contact.is_client && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/20">
-                  Εντολέας
-                </span>
-              )}
+      {/* Header card */}
+      <div className="animate-fade-in-up rounded-2xl border border-border/10 bg-secondary-background p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+              <Users className="h-6 w-6 text-primary" />
             </div>
-          )}
-          {contact.role && !editing && (() => {
-            const role = roles.find(r => r.name === contact.role);
-            return role ? (
-              <span
-                className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium"
-                style={{ backgroundColor: role.color + '25', color: role.color }}
+            <div className="space-y-1">
+              {editing ? (
+                <input
+                  className="input text-xl font-bold w-full max-w-sm"
+                  value={form.name ?? ''}
+                  onChange={set('name')}
+                  required
+                />
+              ) : (
+                <h1 className="text-xl font-bold text-text-primary">{contact.name}</h1>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                {contact.is_client && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/20">
+                    Εντολέας
+                  </span>
+                )}
+                {currentRole && !editing && (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                    style={{ backgroundColor: currentRole.color + '25', color: currentRole.color }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: currentRole.color }} />
+                    {contact.role}
+                  </span>
+                )}
+                {contact.is_client && linkedClient && (
+                  <button
+                    onClick={() => navigate(`/clients/${linkedClient.id}`)}
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer"
+                  >
+                    Προβολή εντολέα <ExternalLink className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            {!editing && !contact.is_client && (
+              <button
+                onClick={handlePromote}
+                disabled={promoting}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-text-secondary border border-border/15 hover:border-primary/30 hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
               >
-                <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
-                {contact.role}
-              </span>
+                {promoting ? <RotateCcw className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
+                {promoting ? 'Μετατροπή…' : 'Μετατροπή σε Εντολέα'}
+              </button>
+            )}
+            {editing ? (
+              <>
+                <button
+                  onClick={cancelEdit}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-text-secondary border border-border/15 hover:border-border/30 transition-colors cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" /> Ακύρωση
+                </button>
+                <button
+                  onClick={saveEdit}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {saving ? <RotateCcw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  {saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
+                </button>
+              </>
+            ) : confirmDelete ? (
+              <>
+                <span className="text-sm text-text-secondary">Σίγουρα;</span>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-text-secondary border border-border/15 hover:border-border/30 transition-colors cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" /> Ακύρωση
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-danger/10 text-danger hover:bg-danger/20 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {deleting ? <RotateCcw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  {deleting ? 'Διαγραφή…' : 'Διαγραφή'}
+                </button>
+              </>
             ) : (
-              <p className="text-sm text-text-secondary mt-0.5">{contact.role}</p>
-            );
-          })()}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {!editing && !contact.is_client && (
-            <button
-              onClick={handlePromote}
-              disabled={promoting}
-              className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <UserCheck className="h-3.5 w-3.5" />
-              {promoting ? 'Μετατροπή…' : 'Μετατροπή σε Εντολέα'}
-            </button>
-          )}
-          {editing ? (
-            <>
-              <button onClick={cancelEdit} className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><X className="h-3.5 w-3.5" />Ακύρωση</button>
-              <button onClick={saveEdit} disabled={saving} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer"><Check className="h-3.5 w-3.5" />{saving ? 'Αποθήκευση…' : 'Αποθήκευση'}</button>
-            </>
-          ) : confirmDelete ? (
-            <>
-              <span className="text-sm text-text-secondary">Σίγουρα;</span>
-              <button onClick={() => setConfirmDelete(false)} className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><X className="h-3.5 w-3.5" />Ακύρωση</button>
-              <button onClick={handleDelete} disabled={deleting} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-danger/10 text-danger hover:bg-danger/20 transition-colors cursor-pointer disabled:opacity-50">
-                <Trash2 className="h-3.5 w-3.5" />{deleting ? 'Διαγραφή…' : 'Διαγραφή'}
-              </button>
-            </>
-          ) : (
-            <>
-              <button onClick={() => setConfirmDelete(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-text-secondary hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer">
-                <Trash2 className="h-3.5 w-3.5" />Διαγραφή
-              </button>
-              <button onClick={startEdit} className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><Pencil className="h-3.5 w-3.5" />Επεξεργασία</button>
-            </>
-          )}
+              <>
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-text-secondary hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Διαγραφή
+                </button>
+                <button
+                  onClick={startEdit}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-text-secondary border border-border/15 hover:border-border/30 hover:text-text-primary transition-colors cursor-pointer"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Επεξεργασία
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {error && <p className="text-sm text-danger">{error}</p>}
-
-      {contact.is_client && linkedClient && (
-        <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-          <UserCheck className="h-4 w-4 text-primary shrink-0" />
-          <span className="text-sm text-text-primary">Αυτή η επαφή είναι επίσης εντολέας.</span>
-          <button
-            onClick={() => navigate(`/clients/${linkedClient.id}`)}
-            className="ml-auto inline-flex items-center gap-1.5 text-sm text-primary hover:underline cursor-pointer"
-          >
-            Προβολή εντολέα <ExternalLink className="h-3.5 w-3.5" />
-          </button>
+      {/* Error */}
+      {error && (
+        <div className="animate-fade-in rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+          {error}
         </div>
       )}
 
-      <div className="rounded-xl border border-border/10 bg-secondary-background">
+      {/* Info */}
+      <div className="animate-fade-in-up stagger-1 rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
         {editing ? (
-          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {([
               ['phone', 'Τηλέφωνο'],
               ['phone2', 'Τηλέφωνο 2'],
@@ -230,7 +310,7 @@ export default function ContactDetail() {
             </div>
             <div>
               <label className="block text-xs text-text-secondary mb-1">Taxisnet Password</label>
-              <input className="input w-full" type="password" value={(form.taxis_password as string) ?? ''} onChange={set('taxis_password')} />
+              <input className="input w-full" value={(form.taxis_password as string) ?? ''} onChange={set('taxis_password')} />
             </div>
             <div>
               <label className="block text-xs text-text-secondary mb-1">Ημ/νία γέννησης</label>
@@ -242,51 +322,81 @@ export default function ContactDetail() {
             </div>
           </div>
         ) : (
-          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {contact.phone && <InfoRow icon={<Phone className="h-4 w-4" />} label="Τηλέφωνο" value={contact.phone} />}
-            {contact.phone2 && <InfoRow icon={<Phone className="h-4 w-4" />} label="Τηλέφωνο 2" value={contact.phone2} />}
-            {contact.email && <InfoRow icon={<Mail className="h-4 w-4" />} label="Email" value={contact.email} />}
-            {contact.role && (() => {
-              const role = roles.find(r => r.name === contact.role);
-              return role ? (
-                <div className="flex items-start gap-2.5">
-                  <span className="text-text-secondary mt-0.5 shrink-0"><Tag className="h-4 w-4" /></span>
-                  <div>
-                    <div className="text-xs text-text-secondary">Ρόλος</div>
-                    <span
-                      className="inline-flex items-center gap-1.5 mt-0.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
-                      style={{ backgroundColor: role.color + '25', color: role.color }}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
-                      {contact.role}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <InfoRow icon={<Tag className="h-4 w-4" />} label="Ρόλος" value={contact.role} />
-              );
-            })()}
-            {contact.address && <InfoRow icon={<MapPin className="h-4 w-4" />} label="Διεύθυνση" value={contact.address} />}
-            {contact.vat && <InfoRow icon={<FileText className="h-4 w-4" />} label="ΑΦΜ" value={contact.vat} />}
-            {contact.father_name && <InfoRow icon={<FileText className="h-4 w-4" />} label="Όνομα πατρός" value={contact.father_name} />}
-            {contact.mother_name && <InfoRow icon={<FileText className="h-4 w-4" />} label="Όνομα μητρός" value={contact.mother_name} />}
-            {contact.birthdate && <InfoRow icon={<FileText className="h-4 w-4" />} label="Ημ/νία γέννησης" value={formatDate(contact.birthdate)} />}
-            {contact.amka && <InfoRow icon={<FileText className="h-4 w-4" />} label="ΑΜΚΑ" value={contact.amka} />}
-            {contact.iban && <InfoRow icon={<FileText className="h-4 w-4" />} label="IBAN" value={contact.iban} />}
-            {contact.at && <InfoRow icon={<FileText className="h-4 w-4" />} label="ΑΤ" value={contact.at} />}
-            {contact.taxis_username && <InfoRow icon={<FileText className="h-4 w-4" />} label="Taxisnet Username" value={contact.taxis_username} />}
-            {contact.taxis_password && <InfoRow icon={<FileText className="h-4 w-4" />} label="Taxisnet Password" value={'•'.repeat(contact.taxis_password.length)} />}
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {contact.role && (() => {
+                const role = roles.find(r => r.name === contact.role);
+                return role ? (
+                  <InfoCard
+                    icon={<Tag className="h-4 w-4" />}
+                    iconColor="text-primary"
+                    iconBg="bg-primary/10"
+                    label="Ρόλος"
+                    value={
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                        style={{ backgroundColor: role.color + '25', color: role.color }}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+                        {contact.role}
+                      </span>
+                    }
+                  />
+                ) : (
+                  <InfoCard {...FIELD_META.taxis_username} label="Ρόλος" value={<span className="text-sm text-text-primary">{contact.role}</span>} />
+                );
+              })()}
+              {([
+                ['phone', 'Τηλέφωνο', contact.phone],
+                ['phone2', 'Τηλέφωνο 2', contact.phone2],
+                ['email', 'Email', contact.email],
+                ['address', 'Διεύθυνση', contact.address],
+                ['vat', 'ΑΦΜ', contact.vat],
+                ['professional_status', 'Επαγγελματική Ιδιότητα', contact.professional_status],
+                ['father_name', 'Όνομα πατρός', contact.father_name],
+                ['mother_name', 'Όνομα μητρός', contact.mother_name],
+                ['birthdate', 'Ημ/νία γέννησης', contact.birthdate ? formatDate(contact.birthdate) : null],
+                ['amka', 'ΑΜΚΑ', contact.amka],
+                ['iban', 'IBAN', contact.iban],
+                ['at', 'ΑΤ', contact.at],
+                ['taxis_username', 'Taxisnet Username', contact.taxis_username],
+                ['taxis_password', 'Taxisnet Password', contact.taxis_password],
+              ] as [string, string, string | null | undefined][]).map(([key, label, val]) =>
+                val ? (
+                  <InfoCard
+                    key={key}
+                    icon={(FIELD_META[key] ?? FIELD_META.vat).icon}
+                    iconColor={(FIELD_META[key] ?? FIELD_META.vat).color}
+                    iconBg={(FIELD_META[key] ?? FIELD_META.vat).bg}
+                    label={label}
+                    value={<span className="text-sm text-text-primary">{val}</span>}
+                  />
+                ) : null
+              )}
+            </div>
             {contact.notes && (
-              <div className="sm:col-span-2 text-sm text-text-secondary bg-white/3 rounded-lg p-3">{contact.notes}</div>
+              <div className="border-t border-border/10 pt-4">
+                <p className="text-xs text-text-secondary mb-1">Σημειώσεις</p>
+                <p className="text-sm text-text-primary whitespace-pre-wrap">{contact.notes}</p>
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
 
-      <div>
-        <h2 className="text-sm font-semibold text-text-primary mb-3">Συνδεδεμένες Υποθέσεις ({cases.length})</h2>
+      {/* Linked cases */}
+      <div className="animate-fade-in-up stagger-2 space-y-3">
+        <h2 className="text-sm font-semibold text-text-primary">
+          Συνδεδεμένες Υποθέσεις
+          <span className="ml-2 text-xs font-normal text-text-secondary">({cases.length})</span>
+        </h2>
         {cases.length === 0 ? (
-          <p className="text-sm text-text-secondary">Η επαφή δεν είναι συνδεδεμένη σε καμία υπόθεση.</p>
+          <div className="flex flex-col items-center gap-2 py-8 text-text-secondary">
+            <div className="w-10 h-10 rounded-xl bg-border/5 flex items-center justify-center">
+              <Briefcase className="h-5 w-5 opacity-30" />
+            </div>
+            <p className="text-sm">Η επαφή δεν είναι συνδεδεμένη σε καμία υπόθεση.</p>
+          </div>
         ) : (
           <div className="rounded-xl border border-border/10 overflow-hidden">
             <table className="w-full text-sm">
@@ -299,11 +409,16 @@ export default function ContactDetail() {
               </thead>
               <tbody className="divide-y divide-border/10">
                 {cases.map((c) => (
-                  <tr key={c.case_id} onClick={() => navigate(`/cases/${c.case_id}`)} className="hover:bg-white/3 cursor-pointer transition-colors">
+                  <tr
+                    key={c.case_id}
+                    onClick={() => navigate(`/cases/${c.case_id}`)}
+                    className="hover:bg-white/3 cursor-pointer transition-colors"
+                  >
                     <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{c.code}</td>
                     <td className="px-4 py-2.5 text-text-primary">{c.title}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[c.status] ?? 'bg-border/20 text-text-secondary'}`}>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status] ?? STATUS_BADGE.closed}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[c.status] ?? 'bg-border'}`} />
                         {STATUS_LABELS[c.status] ?? c.status}
                       </span>
                     </td>
@@ -318,13 +433,23 @@ export default function ContactDetail() {
   );
 }
 
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoCard({
+  icon, iconColor, iconBg, label, value,
+}: {
+  icon: React.ReactNode;
+  iconColor: string;
+  iconBg: string;
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
-    <div className="flex items-start gap-2.5">
-      <span className="text-text-secondary mt-0.5 shrink-0">{icon}</span>
-      <div>
-        <div className="text-xs text-text-secondary">{label}</div>
-        <div className="text-sm text-text-primary">{value}</div>
+    <div className="flex items-start gap-3 rounded-lg bg-background px-3 py-2.5">
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${iconBg} ${iconColor}`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-text-secondary mb-0.5">{label}</p>
+        {value}
       </div>
     </div>
   );

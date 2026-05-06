@@ -4,6 +4,7 @@ import {
   Phone, AlertCircle, CheckSquare, CalendarClock,
   Check, RotateCcw, PhoneIncoming, PhoneOutgoing, Plus,
   ChevronLeft, ChevronRight, X as XIcon,
+  Clock, LinkIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth';
 import { fetchAllTasks, completeTask, reopenTask, createTask } from './Tasks/taskUtils';
@@ -74,30 +75,81 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header + CTA */}
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-bold text-text-primary">Πίνακας Ελέγχου</h1>
+      {/* ── Header ── */}
+      <div className="animate-fade-in-up flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Πίνακας Ελέγχου</h1>
+          <p className="text-sm text-text-secondary mt-0.5">
+            {new Date().toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
         <button
           onClick={() => setShowNewCall(true)}
-          className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 cursor-pointer text-base"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
         >
           <Phone className="h-4 w-4" />
           Νέα Κλήση
         </button>
       </div>
 
+      {/* ── Stat cards ── */}
+      {!loading && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard
+            icon={<CheckSquare className="h-5 w-5" />}
+            label="Σήμερα"
+            value={todayTasks.length}
+            color="blue"
+            delay="stagger-1"
+            onClick={() => navigate('/tasks')}
+          />
+          <StatCard
+            icon={<AlertCircle className="h-5 w-5" />}
+            label="Ληξιπρόθεσμες"
+            value={overdue.length}
+            color={overdue.length > 0 ? 'orange' : 'gray'}
+            delay="stagger-2"
+            onClick={() => navigate('/tasks')}
+            pulse={overdue.length > 0}
+          />
+          <StatCard
+            icon={<LinkIcon className="h-5 w-5" />}
+            label="Χωρίς Υπόθεση"
+            value={unlinkedCalls.length}
+            color={unlinkedCalls.length > 0 ? 'amber' : 'gray'}
+            delay="stagger-3"
+            onClick={() => navigate('/calls')}
+          />
+          <StatCard
+            icon={<CalendarClock className="h-5 w-5" />}
+            label="Κρίσιμες (7 ημ.)"
+            value={criticalCases.length}
+            color="purple"
+            delay="stagger-4"
+            onClick={() => navigate('/cases')}
+          />
+        </div>
+      )}
+
       {loading ? (
-        <p className="text-sm text-text-secondary">Φόρτωση…</p>
+        <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
+          <RotateCcw className="h-4 w-4 animate-spin" />
+          Φόρτωση δεδομένων…
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Today's tasks */}
           <Widget
-            icon={<CheckSquare className="h-4 w-4 text-primary" />}
-            title={`Εργασίες σήμερα (${todayTasks.length})`}
+            icon={<CheckSquare className="h-4 w-4" />}
+            iconColor="text-blue-500"
+            iconBg="bg-blue-500/10"
+            title={`Εργασίες σήμερα`}
+            badge={todayTasks.length}
             action={{ label: 'Όλες', onClick: () => navigate('/tasks') }}
+            delay="stagger-1"
           >
             {todayTasks.length === 0 ? (
-              <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες για σήμερα.</p>
+              <EmptyState icon={<CheckSquare className="h-8 w-8 opacity-20" />} text="Δεν υπάρχουν εργασίες για σήμερα." />
             ) : (
               <div className="space-y-2">
                 {todayTasks.map((task) => (
@@ -109,27 +161,35 @@ export default function Dashboard() {
 
           {/* Critical dates */}
           <Widget
-            icon={<CalendarClock className="h-4 w-4 text-text-secondary" />}
-            title="Κρίσιμες ημερομηνίες (επόμενες 7 ημέρες)"
+            icon={<CalendarClock className="h-4 w-4" />}
+            iconColor="text-purple-500"
+            iconBg="bg-purple-500/10"
+            title="Κρίσιμες ημερομηνίες"
+            badge={criticalCases.length}
+            badgeLabel="επόμ. 7 ημ."
             action={criticalCases.length > 0 ? { label: 'Υποθέσεις', onClick: () => navigate('/cases') } : undefined}
+            delay="stagger-2"
           >
             {criticalCases.length === 0 ? (
-              <p className="text-sm text-text-secondary">Δεν υπάρχουν κρίσιμες ημερομηνίες τις επόμενες 7 ημέρες.</p>
+              <EmptyState icon={<CalendarClock className="h-8 w-8 opacity-20" />} text="Δεν υπάρχουν κρίσιμες ημερομηνίες." />
             ) : (
               <div className="space-y-2">
                 {criticalCases.map((c) => (
                   <button
                     key={c.id}
                     onClick={() => navigate(`/cases/${c.id}`)}
-                    className="w-full flex items-center gap-3 rounded-xl border border-border/10 bg-white/2 hover:bg-white/4 px-4 py-3 transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-3 rounded-xl border border-border/10 bg-background hover:bg-purple-500/5 hover:border-purple-500/20 px-4 py-3 transition-all cursor-pointer text-left group"
                   >
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center shrink-0">
+                      <CalendarClock className="h-4 w-4" />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs text-text-secondary">{c.code}</span>
                         <span className="text-sm text-text-primary truncate">{c.title}</span>
                       </div>
                     </div>
-                    <span className="text-xs text-primary shrink-0 font-medium">
+                    <span className="text-xs text-purple-500 shrink-0 font-semibold bg-purple-500/10 px-2 py-0.5 rounded-full">
                       {formatDate(c.next_critical_date, { day: '2-digit', month: 'short' })}
                     </span>
                   </button>
@@ -138,36 +198,43 @@ export default function Dashboard() {
             )}
           </Widget>
 
-          {/* Overdue tasks — spans full width when present */}
+          {/* Overdue tasks */}
           {overdue.length > 0 && (
             <Widget
-              icon={<AlertCircle className="h-4 w-4 text-orange-400" />}
-              title={`Ληξιπρόθεσμες εργασίες (${overdue.length})`}
-              titleColor="text-orange-400"
+              icon={<Clock className="h-4 w-4" />}
+              iconColor="text-orange-500"
+              iconBg="bg-orange-500/10"
+              title="Ληξιπρόθεσμες εργασίες"
+              badge={overdue.length}
+              badgeColor="bg-orange-500/15 text-orange-500"
               action={{ label: 'Όλες οι εργασίες', onClick: () => navigate('/tasks') }}
-              className="md:col-span-2"
+              delay="stagger-3"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {overdue.slice(0, 6).map((task) => (
+              <div className="space-y-2">
+                {overdue.slice(0, 4).map((task) => (
                   <TaskRow key={task.id} task={task} toggling={toggling} onToggle={toggle} onNavigate={navigate} />
                 ))}
               </div>
-              {overdue.length > 6 && (
-                <button onClick={() => navigate('/tasks')} className="text-xs text-orange-400 hover:underline cursor-pointer mt-1">
-                  +{overdue.length - 6} ακόμα…
+              {overdue.length > 4 && (
+                <button onClick={() => navigate('/tasks')} className="text-xs text-orange-500 hover:underline cursor-pointer mt-1">
+                  +{overdue.length - 4} ακόμα…
                 </button>
               )}
             </Widget>
           )}
 
-          {/* Unlinked calls — spans full width when present */}
+          {/* Unlinked calls */}
           {unlinkedCalls.length > 0 && (
             <Widget
-              icon={<AlertCircle className="h-4 w-4 text-orange-400" />}
-              title={`Εκκρεμείς κλήσεις χωρίς υπόθεση (${unlinkedCalls.length})`}
-              titleColor="text-orange-400"
+              icon={<Phone className="h-4 w-4" />}
+              iconColor="text-amber-500"
+              iconBg="bg-amber-500/10"
+              title="Κλήσεις χωρίς υπόθεση"
+              badge={unlinkedCalls.length}
+              badgeColor="bg-amber-500/15 text-amber-500"
               action={{ label: 'Προβολή όλων', onClick: () => navigate('/calls') }}
-              className="md:col-span-2"
+              className="md:col-span-3"
+              delay="stagger-4"
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {unlinkedCalls.slice(0, 4).map((call) => (
@@ -180,7 +247,7 @@ export default function Dashboard() {
                 ))}
               </div>
               {unlinkedCalls.length > 4 && (
-                <button onClick={() => navigate('/calls')} className="text-xs text-orange-400 hover:underline cursor-pointer mt-1">
+                <button onClick={() => navigate('/calls')} className="text-xs text-amber-500 hover:underline cursor-pointer mt-1">
                   +{unlinkedCalls.length - 4} ακόμα…
                 </button>
               )}
@@ -203,32 +270,100 @@ export default function Dashboard() {
   );
 }
 
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+
+type StatColor = 'blue' | 'orange' | 'amber' | 'purple' | 'green' | 'gray';
+
+const COLOR_MAP: Record<StatColor, { bg: string; text: string; ring: string }> = {
+  blue:   { bg: 'bg-blue-500/10',   text: 'text-blue-500',   ring: 'hover:ring-blue-500/20' },
+  orange: { bg: 'bg-orange-500/10', text: 'text-orange-500', ring: 'hover:ring-orange-500/20' },
+  amber:  { bg: 'bg-amber-500/10',  text: 'text-amber-500',  ring: 'hover:ring-amber-500/20' },
+  purple: { bg: 'bg-purple-500/10', text: 'text-purple-500', ring: 'hover:ring-purple-500/20' },
+  green:  { bg: 'bg-green-500/10',  text: 'text-green-500',  ring: 'hover:ring-green-500/20' },
+  gray:   { bg: 'bg-border/5',      text: 'text-text-secondary', ring: 'hover:ring-border/20' },
+};
+
+function StatCard({ icon, label, value, color, delay, onClick, pulse }: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  color: StatColor;
+  delay: string;
+  onClick?: () => void;
+  pulse?: boolean;
+}) {
+  const c = COLOR_MAP[color];
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        'animate-fade-in-up text-left rounded-xl border border-border/10 bg-secondary-background p-4 space-y-3',
+        'ring-1 ring-transparent transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer',
+        c.ring, delay,
+      ].join(' ')}
+    >
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${c.bg} ${c.text} ${pulse ? 'animate-pulse-soft' : ''}`}>
+        {icon}
+      </div>
+      <div>
+        <p className={`text-2xl font-bold ${c.text}`}>{value}</p>
+        <p className="text-xs text-text-secondary mt-0.5">{label}</p>
+      </div>
+    </button>
+  );
+}
+
 // ── Widget shell ──────────────────────────────────────────────────────────────
 
 function Widget({
-  icon, title, titleColor = 'text-text-primary', action, children, className = '',
+  icon, iconColor, iconBg, title, badge, badgeLabel, badgeColor,
+  action, children, className = '', delay = '',
 }: {
   icon: React.ReactNode;
+  iconColor: string;
+  iconBg: string;
   title: string;
-  titleColor?: string;
+  badge?: number;
+  badgeLabel?: string;
+  badgeColor?: string;
   action?: { label: string; onClick: () => void };
   children: React.ReactNode;
   className?: string;
+  delay?: string;
 }) {
+  const bc = badgeColor ?? 'bg-primary/10 text-primary';
   return (
-    <div className={`rounded-xl border border-border/10 bg-secondary-background p-5 space-y-3 ${className}`}>
+    <div className={`animate-fade-in-up rounded-xl border border-border/10 bg-secondary-background p-5 space-y-3 ${className} ${delay}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {icon}
-          <h2 className={`text-sm font-semibold ${titleColor}`}>{title}</h2>
+        <div className="flex items-center gap-2.5">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${iconBg} ${iconColor}`}>
+            {icon}
+          </div>
+          <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
+          {badge !== undefined && badge > 0 && (
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${bc}`}>
+              {badge}{badgeLabel ? ` ${badgeLabel}` : ''}
+            </span>
+          )}
         </div>
         {action && (
-          <button onClick={action.onClick} className="text-xs text-primary hover:underline cursor-pointer shrink-0">
-            {action.label}
+          <button onClick={action.onClick} className="text-xs text-primary hover:underline cursor-pointer shrink-0 font-medium">
+            {action.label} →
           </button>
         )}
       </div>
       {children}
+    </div>
+  );
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────────
+
+function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 py-6 text-text-secondary">
+      {icon}
+      <p className="text-sm">{text}</p>
     </div>
   );
 }
@@ -245,7 +380,11 @@ function TaskRow({ task, toggling, onToggle, onNavigate }: {
   const overdue = task.status === 'open' && !!task.due_date && task.due_date < today;
 
   return (
-    <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${overdue ? 'border-orange-500/20 bg-orange-500/5' : 'border-border/10 bg-white/2'}`}>
+    <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-all ${
+      overdue
+        ? 'border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/8'
+        : 'border-border/10 bg-background hover:bg-secondary-background'
+    }`}>
       <button
         onClick={() => onToggle(task)}
         disabled={toggling === task.id}
@@ -255,7 +394,7 @@ function TaskRow({ task, toggling, onToggle, onNavigate }: {
             ? 'border-green-500 bg-green-500 text-white'
             : overdue
               ? 'border-orange-400 hover:bg-orange-400/20'
-              : 'border-border/30 hover:border-primary',
+              : 'border-border/30 hover:border-primary hover:bg-primary/10',
         ].join(' ')}
       >
         {task.status === 'done' && <Check className="h-3 w-3" />}
@@ -266,14 +405,16 @@ function TaskRow({ task, toggling, onToggle, onNavigate }: {
         {task.case_code && (
           <button
             onClick={() => onNavigate(`/cases/${task.case_id}`)}
-            className="block text-xs text-primary hover:underline cursor-pointer mt-0.5"
+            className="block text-xs text-primary hover:underline cursor-pointer mt-0.5 font-mono"
           >
             {task.case_code} — {task.case_title}
           </button>
         )}
       </div>
       {task.due_date && (
-        <span className={`text-xs shrink-0 ${overdue ? 'text-orange-400 font-medium' : 'text-text-secondary'}`}>
+        <span className={`text-xs shrink-0 px-2 py-0.5 rounded-full font-medium ${
+          overdue ? 'bg-orange-500/15 text-orange-500' : 'bg-border/5 text-text-secondary'
+        }`}>
           {formatDate(task.due_date, { day: '2-digit', month: '2-digit' })}
         </span>
       )}
@@ -281,7 +422,7 @@ function TaskRow({ task, toggling, onToggle, onNavigate }: {
   );
 }
 
-// ── Unlinked call row with inline link action ─────────────────────────────────
+// ── Unlinked call row ─────────────────────────────────────────────────────────
 
 function UnlinkedCallRow({ call, tenantId, onLinked }: {
   call: Call;
@@ -316,19 +457,19 @@ function UnlinkedCallRow({ call, tenantId, onLinked }: {
   };
 
   return (
-    <div className="rounded-xl border border-orange-500/15 bg-orange-500/5 p-3 space-y-2">
+    <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3 space-y-2 hover:border-amber-500/25 transition-colors">
       <div className="flex items-start gap-2">
-        <div className={`mt-0.5 shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
-          call.direction === 'incoming' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'
+        <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${
+          call.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
         }`}>
           {call.direction === 'incoming'
-            ? <PhoneIncoming className="h-3 w-3" />
-            : <PhoneOutgoing className="h-3 w-3" />}
+            ? <PhoneIncoming className="h-3.5 w-3.5" />
+            : <PhoneOutgoing className="h-3.5 w-3.5" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {call.caller_name && <span className="text-sm font-medium text-text-primary">{call.caller_name}</span>}
-            {call.phone && <span className="text-sm text-text-secondary">{call.phone}</span>}
+            {call.phone && <span className="text-sm text-text-secondary font-mono">{call.phone}</span>}
             <span className="text-xs text-text-secondary ml-auto">
               {new Date(call.created_at).toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </span>
@@ -340,9 +481,9 @@ function UnlinkedCallRow({ call, tenantId, onLinked }: {
       {!linking ? (
         <button
           onClick={() => setLinking(true)}
-          className="inline-flex items-center gap-1 text-xs font-medium text-orange-400 hover:text-orange-300 cursor-pointer transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-500 hover:text-amber-400 cursor-pointer transition-colors bg-amber-500/10 hover:bg-amber-500/15 px-2.5 py-1 rounded-lg"
         >
-          <Plus className="h-3 w-3" />
+          <LinkIcon className="h-3 w-3" />
           Σύνδεση με υπόθεση
         </button>
       ) : (
@@ -404,19 +545,13 @@ function addDays(dateStr: string, n: number): string {
 
 function weekStart(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
-  const dow = (d.getDay() + 6) % 7; // Mon=0
+  const dow = (d.getDay() + 6) % 7;
   d.setDate(d.getDate() - dow);
   return d.toISOString().slice(0, 10);
 }
 
 function DashboardCalendar({
-  tasks,
-  calls,
-  onNavigate,
-  tenantId,
-  onTaskCreated,
-  onToggleTask,
-  toggling,
+  tasks, calls, onNavigate, tenantId, onTaskCreated, onToggleTask, toggling,
 }: {
   tasks: Task[];
   calls: Call[];
@@ -429,9 +564,9 @@ function DashboardCalendar({
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
 
-  const [view, setView] = useState<CalendarView>('month');
+  const [view, setView] = useState<CalendarView>('week');
   const [year, setYear] = useState(todayDate.getFullYear());
-  const [month, setMonth] = useState(todayDate.getMonth()); // 0-indexed
+  const [month, setMonth] = useState(todayDate.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<string>(todayStr);
   const [newTaskDate, setNewTaskDate] = useState<string | null>(null);
@@ -461,41 +596,15 @@ function DashboardCalendar({
     }
   };
 
-  const prevMonth = () => {
-    if (month === 0) { setYear(y => y - 1); setMonth(11); }
-    else setMonth(m => m - 1);
-    setSelectedDay(null);
-  };
-  const nextMonth = () => {
-    if (month === 11) { setYear(y => y + 1); setMonth(0); }
-    else setMonth(m => m + 1);
-    setSelectedDay(null);
-  };
-  const goToday = () => {
-    setYear(todayDate.getFullYear());
-    setMonth(todayDate.getMonth());
-    setSelectedDay(todayStr);
-    setAnchor(todayStr);
-  };
+  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); setSelectedDay(null); };
+  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); setSelectedDay(null); };
+  const goToday = () => { setYear(todayDate.getFullYear()); setMonth(todayDate.getMonth()); setSelectedDay(todayStr); setAnchor(todayStr); };
+  const prevPeriod = () => { if (view === 'week') setAnchor(a => addDays(a, -7)); else if (view === 'day') setAnchor(a => addDays(a, -1)); else prevMonth(); };
+  const nextPeriod = () => { if (view === 'week') setAnchor(a => addDays(a, 7)); else if (view === 'day') setAnchor(a => addDays(a, 1)); else nextMonth(); };
 
-  const prevPeriod = () => {
-    if (view === 'week') setAnchor(a => addDays(a, -7));
-    else if (view === 'day') setAnchor(a => addDays(a, -1));
-    else prevMonth();
-  };
-  const nextPeriod = () => {
-    if (view === 'week') setAnchor(a => addDays(a, 7));
-    else if (view === 'day') setAnchor(a => addDays(a, 1));
-    else nextMonth();
-  };
-
-  // Map date string → items
   const itemsByDay = useMemo(() => {
     const map = new Map<string, CalendarItem[]>();
-    const add = (day: string, item: CalendarItem) => {
-      if (!map.has(day)) map.set(day, []);
-      map.get(day)!.push(item);
-    };
+    const add = (day: string, item: CalendarItem) => { if (!map.has(day)) map.set(day, []); map.get(day)!.push(item); };
     for (const t of tasks) {
       if (t.due_date) add(t.due_date, { kind: 'task', id: t.id, title: t.title, case_id: t.case_id, case_code: t.case_code, case_title: t.case_title, status: t.status, due_date: t.due_date, fee: t.fee, expenses: t.expenses, category: t.category, description: t.description });
     }
@@ -506,28 +615,18 @@ function DashboardCalendar({
     return map;
   }, [tasks, calls]);
 
-  // Build grid: weeks, each week is Mon..Sun
   const firstDay = new Date(year, month, 1);
-  // Day of week Mon=0..Sun=6
   const startDow = (firstDay.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7;
-
   const cells: (number | null)[] = [];
-  for (let i = 0; i < totalCells; i++) {
-    const d = i - startDow + 1;
-    cells.push(d >= 1 && d <= daysInMonth ? d : null);
-  }
+  for (let i = 0; i < totalCells; i++) { const d = i - startDow + 1; cells.push(d >= 1 && d <= daysInMonth ? d : null); }
 
   const pad = (n: number) => String(n).padStart(2, '0');
   const dayStr = (d: number) => `${year}-${pad(month + 1)}-${pad(d)}`;
-
   const selectedItems = selectedDay ? (itemsByDay.get(selectedDay) ?? []) : [];
 
-  const weekDays = useMemo(() => {
-    const start = weekStart(anchor);
-    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  }, [anchor]);
+  const weekDays = useMemo(() => { const start = weekStart(anchor); return Array.from({ length: 7 }, (_, i) => addDays(start, i)); }, [anchor]);
 
   const headerTitle = useMemo(() => {
     if (view === 'month') return `${MONTH_NAMES[month]} ${year}`;
@@ -536,46 +635,44 @@ function DashboardCalendar({
       const e = new Date(weekDays[6] + 'T00:00:00');
       const sm = MONTH_NAMES[s.getMonth()];
       const em = MONTH_NAMES[e.getMonth()];
-      return sm === em
-        ? `${s.getDate()}–${e.getDate()} ${sm} ${e.getFullYear()}`
-        : `${s.getDate()} ${sm} – ${e.getDate()} ${em} ${e.getFullYear()}`;
+      return sm === em ? `${s.getDate()}–${e.getDate()} ${sm} ${e.getFullYear()}` : `${s.getDate()} ${sm} – ${e.getDate()} ${em} ${e.getFullYear()}`;
     }
-    // day
     return new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }, [view, month, year, weekDays, anchor]);
 
   return (
-    <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
+    <div className="animate-fade-in-up stagger-5 rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <CalendarClock className="h-4 w-4 text-text-secondary" />
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <CalendarClock className="h-4 w-4" />
+          </div>
           <h2 className="text-sm font-semibold text-text-primary">{headerTitle}</h2>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* View toggle */}
-          <div className="flex rounded-lg border border-border/15 overflow-hidden text-xs">
+          <div className="flex rounded-lg border border-border/15 overflow-hidden text-xs bg-background">
             {(['month', 'week', 'day'] as CalendarView[]).map(v => (
               <button
                 key={v}
                 onClick={() => { setView(v); if (v !== 'month') setAnchor(selectedDay ?? todayStr); }}
-                className={`px-2.5 py-1 cursor-pointer transition-colors ${view === v ? 'bg-primary/20 text-primary font-semibold' : 'text-text-secondary hover:bg-white/5'}`}
+                className={`px-2.5 py-1 cursor-pointer transition-all ${view === v ? 'bg-primary text-white font-semibold' : 'text-text-secondary hover:bg-border/5'}`}
               >
                 {v === 'month' ? 'Μήνας' : v === 'week' ? 'Εβδομάδα' : 'Ημέρα'}
               </button>
             ))}
           </div>
-          <button onClick={goToday} className="px-2 py-1 text-xs text-primary hover:underline cursor-pointer">Σήμερα</button>
-          <button onClick={prevPeriod} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
-          <button onClick={nextPeriod} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
+          <button onClick={goToday} className="px-2.5 py-1 text-xs text-primary hover:bg-primary/10 rounded-lg cursor-pointer transition-colors font-medium">Σήμερα</button>
+          <button onClick={prevPeriod} className="p-1.5 rounded-lg hover:bg-border/5 text-text-secondary cursor-pointer transition-colors"><ChevronLeft className="h-4 w-4" /></button>
+          <button onClick={nextPeriod} className="p-1.5 rounded-lg hover:bg-border/5 text-text-secondary cursor-pointer transition-colors"><ChevronRight className="h-4 w-4" /></button>
         </div>
       </div>
 
-      {/* ── MONTH VIEW ── */}
+      {/* Month view */}
       {view === 'month' && (<>
         <div className="grid grid-cols-7 gap-px">
           {DAY_NAMES.map(d => (
-            <div key={d} className="text-center text-[10px] font-semibold text-text-secondary uppercase tracking-wide py-1">{d}</div>
+            <div key={d} className="text-center text-[10px] font-semibold text-text-secondary uppercase tracking-widest py-1">{d}</div>
           ))}
         </div>
         <div className="grid grid-cols-7 gap-px">
@@ -592,30 +689,30 @@ function DashboardCalendar({
                 key={ds}
                 onClick={() => setSelectedDay(isSelected ? null : ds)}
                 className={[
-                  'relative min-h-16 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1',
-                  isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
-                  isToday ? 'ring-1 ring-primary/50' : '',
+                  'relative min-h-16 rounded-lg p-1.5 text-left transition-all cursor-pointer flex flex-col gap-1',
+                  isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-border/5',
+                  isToday && !isSelected ? 'ring-1 ring-primary/40' : '',
                 ].join(' ')}
               >
-                <span className={['text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0', isToday ? 'bg-primary text-white' : 'text-text-secondary'].join(' ')}>
+                <span className={['text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full shrink-0 transition-colors', isToday ? 'bg-primary text-white shadow-sm shadow-primary/40' : 'text-text-secondary hover:text-text-primary'].join(' ')}>
                   {day}
                 </span>
                 <div className="flex flex-col gap-0.5 overflow-hidden">
                   {tasks_.slice(0, 2).map((item) => {
-                    const overdue = item.kind === 'task' && item.status === 'open' && ds < todayStr;
+                    const ov = item.kind === 'task' && item.status === 'open' && ds < todayStr;
                     const done = item.kind === 'task' && item.status === 'done';
                     return (
-                      <span key={item.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate', done ? 'bg-green-500/10 text-green-400 line-through opacity-60' : overdue ? 'bg-orange-500/15 text-orange-400' : 'bg-primary/15 text-primary'].join(' ')}>
+                      <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate', done ? 'bg-green-500/10 text-green-500 line-through opacity-60' : ov ? 'bg-orange-500/15 text-orange-500' : 'bg-primary/15 text-primary'].join(' ')}>
                         {item.kind === 'task' ? item.title : ''}
                       </span>
                     );
                   })}
-                  {calls_.slice(0, 2).map((item) => (
-                    <span key={item.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate', item.kind === 'call' && item.direction === 'incoming' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'].join(' ')}>
+                  {calls_.slice(0, 1).map((item) => (
+                    <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate', item.kind === 'call' && item.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'].join(' ')}>
                       {item.kind === 'call' ? (item.caller_name ?? item.phone ?? 'Κλήση') : ''}
                     </span>
                   ))}
-                  {items.length > 4 && <span className="text-xs text-text-secondary px-1">+{items.length - 4} ακόμα</span>}
+                  {items.length > 3 && <span className="text-[13px] text-text-secondary px-1">+{items.length - 3}</span>}
                 </div>
               </button>
             );
@@ -626,7 +723,7 @@ function DashboardCalendar({
         )}
       </>)}
 
-      {/* ── WEEK VIEW ── */}
+      {/* Week view */}
       {view === 'week' && (
         <div className="grid grid-cols-7 gap-1">
           {weekDays.map((ds) => {
@@ -638,25 +735,25 @@ function DashboardCalendar({
               <div
                 key={ds}
                 onClick={() => setAnchor(ds)}
-                className={['rounded-lg p-2 flex flex-col gap-1 min-h-36 cursor-pointer transition-colors', isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4', isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}
+                className={['rounded-lg p-2 flex flex-col gap-1 min-h-36 cursor-pointer transition-all', isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-border/5', isToday && !isSelected ? 'ring-1 ring-primary/40' : ''].join(' ')}
               >
                 <div className="flex flex-col items-center pb-1 border-b border-border/10">
-                  <span className="text-[10px] font-semibold text-text-secondary uppercase">{DAY_NAMES[(d.getDay() + 6) % 7]}</span>
-                  <span className={['text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full', isToday ? 'bg-primary text-white' : 'text-text-primary'].join(' ')}>{d.getDate()}</span>
+                  <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-widest">{DAY_NAMES[(d.getDay() + 6) % 7]}</span>
+                  <span className={['text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-colors', isToday ? 'bg-primary text-white shadow-sm shadow-primary/40' : 'text-text-primary'].join(' ')}>{d.getDate()}</span>
                 </div>
                 <div className="flex flex-col gap-0.5 overflow-hidden">
                   {items.map((item) => {
                     if (item.kind === 'task') {
-                      const overdue = item.status === 'open' && ds < todayStr;
+                      const ov = item.status === 'open' && ds < todayStr;
                       const done = item.status === 'done';
                       return (
-                        <span key={item.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block', done ? 'bg-green-500/10 text-green-400 line-through opacity-60' : overdue ? 'bg-orange-500/15 text-orange-400' : 'bg-primary/15 text-primary'].join(' ')}>
+                        <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate block', done ? 'bg-green-500/10 text-green-500 line-through opacity-60' : ov ? 'bg-orange-500/15 text-orange-500' : 'bg-primary/15 text-primary'].join(' ')}>
                           {item.title}
                         </span>
                       );
                     }
                     return (
-                      <span key={item.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block', item.direction === 'incoming' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'].join(' ')}>
+                      <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate block', item.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'].join(' ')}>
                         {item.caller_name ?? item.phone ?? 'Κλήση'}
                       </span>
                     );
@@ -668,39 +765,21 @@ function DashboardCalendar({
         </div>
       )}
       {view === 'week' && (
-        <DayPanel
-          day={anchor}
-          items={itemsByDay.get(anchor) ?? []}
-          todayStr={todayStr}
-          onNavigate={onNavigate}
-          onClose={undefined}
-          onAddTask={setNewTaskDate}
-          onToggleTask={onToggleTask}
-          toggling={toggling}
-        />
+        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} />
       )}
 
-      {/* ── DAY VIEW ── */}
+      {/* Day view */}
       {view === 'day' && (
-        <DayPanel
-          day={anchor}
-          items={itemsByDay.get(anchor) ?? []}
-          todayStr={todayStr}
-          onNavigate={onNavigate}
-          onClose={undefined}
-          onAddTask={setNewTaskDate}
-          onToggleTask={onToggleTask}
-          toggling={toggling}
-        />
+        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} />
       )}
 
       {/* New task modal */}
       {newTaskDate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl animate-fade-in-up">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/10">
               <h2 className="text-base font-semibold text-text-primary">Νέα Εργασία</h2>
-              <button onClick={() => { setNewTaskDate(null); setCreateError(null); }} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer">
+              <button onClick={() => { setNewTaskDate(null); setCreateError(null); }} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer transition-colors">
                 <XIcon className="h-4 w-4" />
               </button>
             </div>
@@ -732,7 +811,7 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
   toggling: string | null;
 }) {
   return (
-    <div className="border-t border-border/10 pt-4 space-y-2">
+    <div className="border-t border-border/10 pt-4 space-y-2 animate-fade-in">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text-primary">
           {new Date(day + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -740,13 +819,13 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
         <div className="flex items-center gap-1">
           <button
             onClick={() => onAddTask(day)}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-primary hover:bg-primary/10 cursor-pointer transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 cursor-pointer transition-colors border border-primary/20"
           >
             <Plus className="h-3.5 w-3.5" />
             Νέα Εργασία
           </button>
           {onClose && (
-            <button onClick={onClose} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-border/5 text-text-secondary cursor-pointer transition-colors">
               <XIcon className="h-3.5 w-3.5" />
             </button>
           )}
@@ -754,7 +833,7 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
       </div>
 
       {items.length === 0 ? (
-        <p className="text-sm text-text-secondary">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
+        <p className="text-sm text-text-secondary py-4 text-center">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
       ) : (
         <div className="space-y-2">
           {items.map((item) => {
@@ -764,14 +843,14 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
               const totalExpenses = item.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
               const hasFinancials = item.fee || (item.expenses?.length ?? 0) > 0;
               return (
-                <div key={item.id} className={`rounded-xl border px-4 py-3 space-y-2 ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
+                <div key={item.id} className={`rounded-xl border px-4 py-3 space-y-2 transition-all ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/15 bg-green-500/5 opacity-70' : 'border-border/10 bg-background'}`}>
                   <div className="flex items-start gap-3">
                     <button
                       onClick={() => onToggleTask(item as unknown as Task)}
                       disabled={toggling === item.id}
                       className={[
                         'mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
-                        done ? 'border-green-500 bg-green-500 text-white' : overdue ? 'border-orange-400 hover:bg-orange-400/20' : 'border-border/30 hover:border-primary',
+                        done ? 'border-green-500 bg-green-500 text-white' : overdue ? 'border-orange-400 hover:bg-orange-400/20' : 'border-border/30 hover:border-primary hover:bg-primary/10',
                       ].join(' ')}
                     >
                       {done && <Check className="h-3 w-3" />}
@@ -779,35 +858,28 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                     </button>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium ${done ? 'line-through text-text-secondary' : 'text-text-primary'}`}>{item.title}</p>
-                      {item.description && (
-                        <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{item.description}</p>
-                      )}
+                      {item.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{item.description}</p>}
                       <div className="flex flex-wrap items-center gap-2 mt-1">
                         {item.case_code && (
-                          <button
-                            onClick={() => item.case_id && onNavigate(`/cases/${item.case_id}`)}
-                            className="text-xs text-primary hover:underline cursor-pointer font-mono"
-                          >
+                          <button onClick={() => item.case_id && onNavigate(`/cases/${item.case_id}`)} className="text-xs text-primary hover:underline cursor-pointer font-mono">
                             {item.case_code} — {item.case_title}
                           </button>
                         )}
                         {item.category && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/8 text-text-secondary border border-border/10">
-                            {item.category === 'legal_act' ? 'Νομικές Πράξεις' :
-                             item.category === 'extrajudicial' ? 'Εξοδικαστηκές' :
-                             item.category === 'appointment' ? 'Ραντεβού' : 'Εργασία Φακέλου'}
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-border/5 text-text-secondary border border-border/10">
+                            {item.category === 'legal_act' ? 'Νομικές Πράξεις' : item.category === 'extrajudicial' ? 'Εξοδικαστηκές' : item.category === 'appointment' ? 'Ραντεβού' : 'Εργασία Φακέλου'}
                           </span>
                         )}
                       </div>
                     </div>
                     {overdue && (
-                      <span className="text-[10px] font-semibold text-orange-400 shrink-0 bg-orange-500/10 px-2 py-0.5 rounded-full">Ληξ/θεσμη</span>
+                      <span className="text-[10px] font-semibold text-orange-500 shrink-0 bg-orange-500/10 px-2 py-0.5 rounded-full">Ληξ/θεσμη</span>
                     )}
                   </div>
                   {hasFinancials && (
-                    <div className="flex flex-wrap gap-3 pl-7 text-xs text-green-400">
+                    <div className="flex flex-wrap gap-3 pl-7 text-xs">
                       {item.fee != null && item.fee > 0 && (
-                        <span>Αμοιβή: <strong>{item.fee.toFixed(2)} €</strong></span>
+                        <span className="text-green-500">Αμοιβή: <strong>{item.fee.toFixed(2)} €</strong></span>
                       )}
                       {(item.expenses?.length ?? 0) > 0 && (
                         <span className="text-red-400">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({item.expenses!.length})</span>
@@ -818,10 +890,10 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
               );
             }
             return (
-              <div key={item.id} className="rounded-xl border border-border/10 bg-white/2 px-4 py-3 space-y-1">
+              <div key={item.id} className="rounded-xl border border-border/10 bg-background px-4 py-3 space-y-1 hover:border-border/20 transition-colors">
                 <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${item.direction === 'incoming' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                    {item.direction === 'incoming' ? <PhoneIncoming className="h-3 w-3" /> : <PhoneOutgoing className="h-3 w-3" />}
+                  <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${item.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                    {item.direction === 'incoming' ? <PhoneIncoming className="h-3.5 w-3.5" /> : <PhoneOutgoing className="h-3.5 w-3.5" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -832,10 +904,7 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                       </span>
                     </div>
                     {item.case_code && (
-                      <button
-                        onClick={() => item.case_id && onNavigate(`/cases/${item.case_id}`)}
-                        className="text-xs text-primary hover:underline cursor-pointer mt-0.5 font-mono"
-                      >
+                      <button onClick={() => item.case_id && onNavigate(`/cases/${item.case_id}`)} className="text-xs text-primary hover:underline cursor-pointer mt-0.5 font-mono">
                         {item.case_code} — {item.case_title}
                       </button>
                     )}

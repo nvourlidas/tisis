@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import {
+  ArrowLeft, Briefcase, Info, Users, Phone,
+  CheckSquare, TrendingUp, FolderOpen, RotateCcw,
+} from 'lucide-react';
 import { useAuth } from '../../auth';
 import { fetchCase } from './caseUtils';
 import type { Case } from './types';
@@ -12,26 +15,32 @@ import CaseFinancials from './components/CaseFinancials';
 import CaseFiles from './components/CaseFiles';
 
 const STATUS_LABELS: Record<string, string> = {
-  active: 'Ενεργή',
+  active:  'Ενεργή',
   pending: 'Εκκρεμής',
-  closed: 'Κλειστή',
+  closed:  'Κλειστή',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  active: 'bg-green-500/15 text-green-400',
-  pending: 'bg-yellow-500/15 text-yellow-400',
-  closed: 'bg-border/20 text-text-secondary',
+  active:  'bg-green-500/15 text-green-500',
+  pending: 'bg-yellow-500/15 text-yellow-600',
+  closed:  'bg-border/10 text-text-secondary',
+};
+
+const STATUS_DOT: Record<string, string> = {
+  active:  'bg-green-500',
+  pending: 'bg-yellow-500',
+  closed:  'bg-text-secondary/40',
 };
 
 type Tab = 'info' | 'contacts' | 'calls' | 'tasks' | 'financials' | 'files';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'info', label: 'Πληροφορίες' },
-  { id: 'contacts', label: 'Επαφές' },
-  { id: 'calls', label: 'Κλήσεις' },
-  { id: 'tasks', label: 'Εργασίες' },
-  { id: 'financials', label: 'Οικονομικά' },
-  { id: 'files', label: 'Αρχεία' },
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: 'info',       label: 'Πληροφορίες', icon: <Info className="h-3.5 w-3.5" /> },
+  { id: 'contacts',   label: 'Επαφές',      icon: <Users className="h-3.5 w-3.5" /> },
+  { id: 'calls',      label: 'Κλήσεις',     icon: <Phone className="h-3.5 w-3.5" /> },
+  { id: 'tasks',      label: 'Εργασίες',    icon: <CheckSquare className="h-3.5 w-3.5" /> },
+  { id: 'financials', label: 'Οικονομικά',  icon: <TrendingUp className="h-3.5 w-3.5" /> },
+  { id: 'files',      label: 'Αρχεία',      icon: <FolderOpen className="h-3.5 w-3.5" /> },
 ];
 
 export default function CaseDetail() {
@@ -50,52 +59,87 @@ export default function CaseDetail() {
     fetchCase(id).then(setCaseData).finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <div className="p-6 text-sm text-text-secondary">Φόρτωση…</div>;
-  if (!caseData) return <div className="p-6 text-sm text-text-secondary">Η υπόθεση δεν βρέθηκε.</div>;
+  if (loading) return (
+    <div className="p-6 flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft">
+      <RotateCcw className="h-4 w-4 animate-spin" />
+      Φόρτωση υπόθεσης…
+    </div>
+  );
+  if (!caseData) return (
+    <div className="p-6 flex items-center gap-3 text-sm text-text-secondary">
+      <Briefcase className="h-4 w-4 opacity-40" />
+      Η υπόθεση δεν βρέθηκε.
+    </div>
+  );
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-5">
+      {/* Back */}
       <button
         onClick={() => navigate('/cases')}
-        className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+        className="animate-fade-in inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer group"
       >
-        <ArrowLeft className="h-4 w-4" />
+        <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
         Υποθέσεις
       </button>
 
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-sm text-text-secondary">{caseData.code}</span>
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[caseData.status] ?? ''}`}>
-            {STATUS_LABELS[caseData.status] ?? caseData.status}
-          </span>
+      {/* Header card */}
+      <div className="animate-fade-in-up rounded-xl border border-border/10 bg-secondary-background px-6 py-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
+              <Briefcase className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="font-mono text-xs text-text-secondary bg-border/5 px-2 py-0.5 rounded-md border border-border/10">
+                  {caseData.code}
+                </span>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[caseData.status] ?? ''}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[caseData.status] ?? ''}`} />
+                  {STATUS_LABELS[caseData.status] ?? caseData.status}
+                </span>
+                {caseData.type && (
+                  <span className="text-xs text-text-secondary bg-border/5 px-2 py-0.5 rounded-full border border-border/10">
+                    {caseData.type}
+                  </span>
+                )}
+              </div>
+              <h1 className="text-xl font-bold text-text-primary mt-1.5 leading-tight">{caseData.title}</h1>
+              {caseData.client_name && (
+                <p className="text-sm text-text-secondary mt-1 flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" />
+                  {caseData.client_name}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
-        <h1 className="text-xl font-bold text-text-primary mt-0.5">{caseData.title}</h1>
-        {caseData.client_name && (
-          <p className="text-sm text-text-secondary mt-0.5">{caseData.client_name}</p>
-        )}
       </div>
 
-      <div className="border-b border-border/10">
-        <div className="flex gap-1 overflow-x-auto no-scrollbar">
+      {/* Tabs */}
+      <div className="animate-fade-in-up stagger-1 border-b border-border/10">
+        <div className="flex gap-0.5 overflow-x-auto no-scrollbar">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={[
-                'px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all cursor-pointer border-b-2 -mb-px',
+                'inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all cursor-pointer border-b-2 -mb-px',
                 tab === t.id
                   ? 'text-primary border-primary'
                   : 'text-text-secondary border-transparent hover:text-text-primary hover:border-border/30',
               ].join(' ')}
             >
+              {t.icon}
               {t.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div>
+      {/* Tab content */}
+      <div className="animate-fade-in">
         {tab === 'info' && (
           <CaseInfo caseData={caseData} tenantId={tenantId} onUpdate={setCaseData} />
         )}

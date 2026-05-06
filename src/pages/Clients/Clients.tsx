@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, User } from 'lucide-react';
+import { Plus, Search, User, RotateCcw } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchClients, createClient, searchClients } from './clientUtils';
@@ -12,13 +12,13 @@ const COLUMNS: ColumnDef<Client>[] = [
   {
     key: 'name',
     header: 'Όνομα',
-    render: (c) => <span className="font-medium text-text-primary">{c.name}</span>,
+    render: (c) => <span className="font-semibold text-text-primary">{c.name}</span>,
     sortValue: (c) => c.name,
   },
   {
     key: 'phone',
     header: 'Τηλέφωνο',
-    render: (c) => <span className="text-text-secondary">{c.phone ?? '—'}</span>,
+    render: (c) => <span className="text-text-secondary font-mono">{c.phone ?? '—'}</span>,
     sortValue: (c) => c.phone ?? '',
   },
   {
@@ -30,7 +30,9 @@ const COLUMNS: ColumnDef<Client>[] = [
   {
     key: 'professional_status',
     header: 'Ιδιότητα',
-    render: (c) => <span className="text-text-secondary">{c.professional_status ?? '—'}</span>,
+    render: (c) => c.professional_status
+      ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">{c.professional_status}</span>
+      : <span className="text-text-secondary">—</span>,
     sortValue: (c) => c.professional_status ?? '',
     defaultVisible: false,
   },
@@ -126,41 +128,65 @@ export default function Clients() {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-bold text-text-primary">Εντολείς</h1>
-        <button onClick={() => setShowCreate(true)} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
+    <div className="p-6 space-y-5">
+      {/* Header */}
+      <div className="animate-fade-in-up flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Εντολείς</h1>
+          <p className="text-sm text-text-secondary mt-0.5">{clients.length} εντολείς</p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
+        >
           <Plus className="h-4 w-4" />
           Νέος Εντολέας
         </button>
       </div>
 
-      <div className="relative">
+      {/* Search */}
+      <div className="animate-fade-in-up stagger-1 relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
         <input
-          className="input w-full pl-9!"
+          className="input rounded-xl border-border/15 hover:border-border/30 focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-colors w-full pl-9!"
           placeholder="Αναζήτηση με όνομα, τηλέφωνο ή email…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
 
+      {/* Table */}
       {loading ? (
-        <p className="text-sm text-text-secondary">Φόρτωση…</p>
+        <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
+          <RotateCcw className="h-4 w-4 animate-spin" />
+          Φόρτωση εντολέων…
+        </div>
       ) : (
-        <DataTable
-          tableId="clients"
-          columns={COLUMNS}
-          data={clients}
-          rowKey={(c) => c.id}
-          onRowClick={(c) => navigate(`/clients/${c.id}`)}
-          emptyState={
-            <div className="flex flex-col items-center justify-center py-8 text-text-secondary">
-              <User className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm">{query ? 'Δεν βρέθηκαν εντολείς.' : 'Δεν υπάρχουν εντολείς ακόμα.'}</p>
-            </div>
-          }
-        />
+        <div className="animate-fade-in-up stagger-2">
+          <DataTable
+            tableId="clients"
+            columns={COLUMNS}
+            data={clients}
+            rowKey={(c) => c.id}
+            onRowClick={(c) => navigate(`/clients/${c.id}`)}
+            emptyState={
+              <div className="flex flex-col items-center justify-center py-12 text-text-secondary gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-border/5 flex items-center justify-center">
+                  <User className="h-7 w-7 opacity-30" />
+                </div>
+                <p className="text-sm">{query ? 'Δεν βρέθηκαν εντολείς.' : 'Δεν υπάρχουν εντολείς ακόμα.'}</p>
+                {!query && (
+                  <button
+                    onClick={() => setShowCreate(true)}
+                    className="text-xs text-primary hover:underline cursor-pointer font-medium"
+                  >
+                    Δημιουργήστε τον πρώτο εντολέα →
+                  </button>
+                )}
+              </div>
+            }
+          />
+        </div>
       )}
 
       <NewClientModal open={showCreate} onClose={() => setShowCreate(false)} onSubmit={handleCreate} />

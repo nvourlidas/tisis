@@ -26,10 +26,10 @@ function weekStart(dateStr: string): string {
 }
 
 const CATEGORY_COLORS: Record<TaskCategory, string> = {
-  legal_act: 'bg-blue-500/15 text-blue-400',
-  extrajudicial: 'bg-purple-500/15 text-purple-400',
-  appointment: 'bg-teal-500/15 text-teal-400',
-  file_work: 'bg-amber-500/15 text-amber-400',
+  legal_act:    'bg-blue-500/15 text-blue-500',
+  extrajudicial:'bg-purple-500/15 text-purple-500',
+  appointment:  'bg-teal-500/15 text-teal-500',
+  file_work:    'bg-amber-500/15 text-amber-500',
 };
 
 type Props = { caseId: string; tenantId?: string };
@@ -219,9 +219,12 @@ export default function CaseTasks({ caseId }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-text-secondary">{open.length} ανοιχτές · {done.length} ολοκληρωμένες</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-text-secondary">{open.length} ανοιχτές</span>
+          {done.length > 0 && <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full font-medium">{done.length} ολοκληρωμένες</span>}
+        </div>
         <button onClick={() => { setShowForm(v => !v); setEditingTask(null); }}
-          className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer">
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer">
           <Plus className="h-3.5 w-3.5" />
           Νέα Εργασία
         </button>

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, RotateCcw, AlertCircle,
-  X, ChevronLeft, ChevronRight, Pencil,
+  X, ChevronLeft, ChevronRight, Pencil, CheckSquare,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import {
@@ -31,10 +31,10 @@ function weekStart(dateStr: string): string {
 }
 
 const CATEGORY_COLORS: Record<TaskCategory, string> = {
-  legal_act: 'bg-blue-500/15 text-blue-400',
-  extrajudicial: 'bg-purple-500/15 text-purple-400',
-  appointment: 'bg-teal-500/15 text-teal-400',
-  file_work: 'bg-amber-500/15 text-amber-400',
+  legal_act: 'bg-blue-500/15 text-blue-500',
+  extrajudicial: 'bg-purple-500/15 text-purple-500',
+  appointment: 'bg-teal-500/15 text-teal-500',
+  file_work: 'bg-amber-500/15 text-amber-500',
 };
 
 export default function Tasks() {
@@ -223,24 +223,28 @@ export default function Tasks() {
   const openCount = groups.overdue.length + groups.today.length + groups.upcoming.length + groups.noDueDate.length;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4">
+    <div className="p-6 space-y-5">
+      {/* Header */}
+      <div className="animate-fade-in-up flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">Εργασίες</h1>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Εργασίες</h1>
           {!loading && (
             <p className="text-sm text-text-secondary mt-0.5">
               {openCount} ανοιχτές · {groups.done.length} ολοκληρωμένες
             </p>
           )}
         </div>
-        <button onClick={() => { setShowCreate(true); setEditingTask(null); }} className="btn-primary inline-flex items-center gap-1.5 cursor-pointer">
+        <button
+          onClick={() => { setShowCreate(true); setEditingTask(null); }}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
+        >
           <Plus className="h-4 w-4" />
           Νέα Εργασία
         </button>
       </div>
 
       {showCreate && (
-        <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
+        <div className="animate-fade-in rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-text-primary">Νέα Εργασία</h3>
             <button type="button" onClick={() => setShowCreate(false)} className="h-6 w-6 flex items-center justify-center rounded hover:bg-border/10 text-text-secondary cursor-pointer">
@@ -267,10 +271,10 @@ export default function Tasks() {
       />
 
       {/* Category filter */}
-      <div className="flex flex-wrap gap-2">
+      <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-1.5">
         <button
           onClick={() => { setCategoryFilter(null); setAuthorityFilter(''); setGakFilter(''); setEkaFilter(''); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${!categoryFilter ? 'bg-primary text-white' : 'bg-white/5 text-text-secondary hover:bg-white/10'}`}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${!categoryFilter ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
         >
           Όλες
         </button>
@@ -278,7 +282,7 @@ export default function Tasks() {
           <button
             key={cat}
             onClick={() => { setCategoryFilter(c => c === cat ? null : cat); setAuthorityFilter(''); setGakFilter(''); setEkaFilter(''); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${categoryFilter === cat ? 'bg-primary text-white' : 'bg-white/5 text-text-secondary hover:bg-white/10'}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${categoryFilter === cat ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
           >
             {TASK_CATEGORIES[cat]}
           </button>
@@ -286,35 +290,38 @@ export default function Tasks() {
       </div>
 
       {categoryFilter === 'legal_act' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="animate-fade-in grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs text-text-secondary mb-1">Αρμόδια Αρχή</label>
-            <input className="input w-full text-sm" placeholder="Φίλτρο…" value={authorityFilter} onChange={e => setAuthorityFilter(e.target.value)} />
+            <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={authorityFilter} onChange={e => setAuthorityFilter(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs text-text-secondary mb-1">ΓΑΚ</label>
-            <input className="input w-full text-sm" placeholder="Φίλτρο…" value={gakFilter} onChange={e => setGakFilter(e.target.value)} />
+            <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={gakFilter} onChange={e => setGakFilter(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs text-text-secondary mb-1">ΕΚΑ</label>
-            <input className="input w-full text-sm" placeholder="Φίλτρο…" value={ekaFilter} onChange={e => setEkaFilter(e.target.value)} />
+            <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={ekaFilter} onChange={e => setEkaFilter(e.target.value)} />
           </div>
         </div>
       )}
 
       {loading ? (
-        <p className="text-sm text-text-secondary">Φόρτωση…</p>
+        <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
+          <RotateCcw className="h-4 w-4 animate-spin" />
+          Φόρτωση εργασιών…
+        </div>
       ) : (
-        <div className="space-y-5">
+        <div className="animate-fade-in-up stagger-2 space-y-5">
           <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h2 className="text-sm font-semibold text-text-primary">{headerTitle}</h2>
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex rounded-lg border border-border/15 overflow-hidden text-xs">
+                <div className="flex rounded-xl border border-border/15 overflow-hidden text-xs">
                   {(['month', 'week', 'day'] as CalendarView[]).map(v => (
                     <button key={v} onClick={() => { setView(v); if (v !== 'month') setAnchor(selectedDay ?? todayStr); }}
-                      className={`px-2.5 py-1 cursor-pointer transition-colors ${view === v ? 'bg-primary/20 text-primary font-semibold' : 'text-text-secondary hover:bg-white/5'}`}>
+                      className={`px-3 py-1.5 cursor-pointer transition-colors font-medium ${view === v ? 'bg-primary text-white' : 'text-text-secondary hover:bg-white/5'}`}>
                       {v === 'month' ? 'Μήνας' : v === 'week' ? 'Εβδομάδα' : 'Ημέρα'}
                     </button>
                   ))}
@@ -376,7 +383,7 @@ export default function Tasks() {
                     </button>
                   </div>
                   {selectedTasks.length === 0 ? (
-                    <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                    <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
                   ) : (
                     <div className="space-y-2">
                       {selectedTasks.map(task => (
@@ -430,7 +437,7 @@ export default function Tasks() {
                   {new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                 </h3>
                 {(tasksByDay.get(anchor) ?? []).length === 0 ? (
-                  <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                  <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
                 ) : (
                   <div className="space-y-2">
                     {(tasksByDay.get(anchor) ?? []).map(task => (
@@ -446,7 +453,7 @@ export default function Tasks() {
             {view === 'day' && (
               <div className="space-y-2">
                 {(tasksByDay.get(anchor) ?? []).length === 0 ? (
-                  <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                  <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
                 ) : (
                   <div className="space-y-2">
                     {(tasksByDay.get(anchor) ?? []).map(task => (
@@ -460,8 +467,11 @@ export default function Tasks() {
           </div>
 
           {noDueDateTasks.length > 0 && (
-            <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-3">
-              <h2 className="text-sm font-semibold text-text-secondary">Χωρίς προθεσμία ({noDueDateTasks.length})</h2>
+            <div className="rounded-xl border border-orange-500/15 bg-orange-500/5 p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-orange-400 shrink-0" />
+                <h2 className="text-sm font-semibold text-orange-400">Χωρίς προθεσμία ({noDueDateTasks.length})</h2>
+              </div>
               <div className="space-y-2">
                 {noDueDateTasks.map(task => (
                   <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
@@ -563,7 +573,7 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {overdue && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/15 text-orange-400">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/15 text-orange-500">
               <AlertCircle className="h-2.5 w-2.5" />
               Ληξ/θεσμη
             </span>
@@ -577,12 +587,12 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
         </div>
       </div>
       {hasFinancials && (
-        <div className="flex flex-wrap gap-3 pl-8 text-xs text-green-400">
+        <div className="flex flex-wrap gap-3 pl-8 text-xs text-green-500">
           {task.fee != null && task.fee > 0 && (
             <span>Αμοιβή: <strong>{task.fee.toFixed(2)} €</strong></span>
           )}
           {(task.expenses?.length ?? 0) > 0 && (
-            <span className="text-red-400">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({task.expenses!.length})</span>
+            <span className="text-red-500">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({task.expenses!.length})</span>
           )}
         </div>
       )}

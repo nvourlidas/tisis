@@ -5,7 +5,7 @@ import { useAuth } from '../auth';
 export default function AdminRoute({ children }: { children: React.ReactNode }) {
   const { session, authReady, profile, profileLoading } = useAuth();
 
-  if (!authReady || profileLoading) return <div className="p-6 text-sm text-text-secondary">Φόρτωση…</div>;
+  if (!authReady || (profileLoading && !profile)) return <div className="p-6 text-sm text-text-secondary">Φόρτωση…</div>;
   if (!session) return <Navigate to="/login" replace />;
   if (!profile?.tenant_id) return <Navigate to="/no-tenant" replace />;
 

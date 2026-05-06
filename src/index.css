@@ -62,6 +62,15 @@
     @apply h-9 rounded-md px-3 text-sm border border-border/10 hover:bg-border/5;
   }
 
+  .select {
+    @apply h-9 rounded-xl border border-border/15 bg-secondary-background px-3 pr-8 text-sm text-text-primary
+           appearance-none cursor-pointer transition-colors
+           hover:border-border/30 focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
@@ -69,4 +78,32 @@
 @keyframes menuIn {
   from { opacity: 0; transform: translateY(6px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0)  scale(1); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+@layer utilities {
+  .animate-fade-in-up { animation: fadeInUp 0.35s ease both; }
+  .animate-fade-in    { animation: fadeIn 0.25s ease both; }
+  .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.10s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.20s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.30s; }
 }
