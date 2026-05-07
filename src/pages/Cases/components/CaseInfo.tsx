@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Check, X, ExternalLink, CalendarDays, User, Tag, Layers, Globe } from 'lucide-react';
+import { Pencil, Check, X, ExternalLink, User, Tag, Layers, Globe } from 'lucide-react';
 import { formatDate } from '../../../lib/dateUtils';
 import { updateCase, fetchStages } from '../caseUtils';
 import { fetchClients } from '../../Clients/clientUtils';
@@ -31,7 +31,6 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
       type: caseData.type ?? '',
       stage_id: caseData.stage_id ?? '',
       description: caseData.description ?? '',
-      next_critical_date: caseData.next_critical_date ?? '',
       google_drive_url: caseData.google_drive_url ?? '',
       notes: caseData.notes ?? '',
     });
@@ -111,9 +110,6 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
               {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </FormField>
-          <FormField label="Επόμενη Κρίσιμη Ημερομηνία">
-            <input className="input w-full rounded-xl border-border/15" type="date" value={form.next_critical_date ?? ''} onChange={set('next_critical_date')} />
-          </FormField>
           <FormField label="Google Drive URL">
             <input className="input w-full rounded-xl border-border/15" type="url" value={form.google_drive_url ?? ''} onChange={set('google_drive_url')} placeholder="https://drive.google.com/…" />
           </FormField>
@@ -143,13 +139,6 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <InfoCard icon={<Tag className="h-4 w-4" />} iconColor="text-blue-500" iconBg="bg-blue-500/10" label="Τύπος Υπόθεσης" value={caseData.type} />
         <InfoCard icon={<Layers className="h-4 w-4" />} iconColor="text-purple-500" iconBg="bg-purple-500/10" label="Στάδιο" value={caseData.stage_name} />
-        <InfoCard
-          icon={<CalendarDays className="h-4 w-4" />}
-          iconColor="text-orange-500"
-          iconBg="bg-orange-500/10"
-          label="Επόμενη Κρίσιμη Ημερομηνία"
-          value={caseData.next_critical_date ? formatDate(caseData.next_critical_date) : null}
-        />
         {caseData.client_name && (
           <InfoCard icon={<User className="h-4 w-4" />} iconColor="text-green-500" iconBg="bg-green-500/10" label="Εντολέας" value={caseData.client_name} />
         )}

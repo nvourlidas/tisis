@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Search, ChevronDown } from 'lucide-react';
 import { fetchClients } from '../../Clients/clientUtils';
 import { fetchStages } from '../caseUtils';
 import type { Client } from '../../Clients/types';
@@ -17,7 +17,7 @@ const CASE_TYPES = ['Αστικό', 'Ποινικό', 'Διοικητικό', '�
 
 const empty: CaseFormData = {
   code: '', title: '', client_id: '', status: 'active', type: '',
-  stage_id: '', description: '', next_critical_date: '', google_drive_url: '', notes: '',
+  stage_id: '', description: '', google_drive_url: '', notes: '',
 };
 
 export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaultClientId }: Props) {
@@ -26,16 +26,31 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
   const [stages, setStages] = useState<CaseStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
       setForm({ ...empty, client_id: defaultClientId ?? '' });
+      setClientSearch('');
+      setClientDropdownOpen(false);
       if (tenantId) {
         if (!defaultClientId) fetchClients(tenantId).then(setClients);
         fetchStages(tenantId).then(setStages);
       }
     }
   }, [open, tenantId, defaultClientId]);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node)) {
+        setClientDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   if (!open) return null;
 
@@ -119,26 +134,60 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
           </div>
 
           {!defaultClientId && (
-            <div>
+            <div ref={clientDropdownRef}>
               <label className="block text-sm text-text-secondary mb-1">Εντολέας</label>
-              <select className="input w-full" value={form.client_id} onChange={set('client_id')}>
-                <option value="">— Χωρίς εντολέα —</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <button
+                type="button"
+                onClick={() => setClientDropdownOpen((o) => !o)}
+                className="input w-full flex items-center justify-between gap-2 text-left cursor-pointer"
+              >
+                <span className={form.client_id ? 'text-text-primary' : 'text-text-secondary'}>
+                  {form.client_id ? (clients.find((c) => c.id === form.client_id)?.name ?? '—') : '— Χωρίς εντολέα —'}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-text-secondary shrink-0 transition-transform ${clientDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {clientDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-full max-w-116 rounded-xl border border-border/15 bg-secondary-background shadow-xl overflow-hidden">
+                  <div className="p-2 border-b border-border/10">
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-background border border-border/10">
+                      <Search className="h-3.5 w-3.5 text-text-secondary shrink-0" />
+                      <input
+                        className="flex-1 bg-transparent text-sm outline-none text-text-primary placeholder:text-text-secondary"
+                        placeholder="Αναζήτηση εντολέα…"
+                        value={clientSearch}
+                        onChange={(e) => setClientSearch(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => { setForm((f) => ({ ...f, client_id: '' })); setClientDropdownOpen(false); setClientSearch(''); }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-text-secondary hover:bg-border/5 transition-colors"
+                    >
+                      — Χωρίς εντολέα —
+                    </button>
+                    {clients
+                      .filter((c) => c.name.toLowerCase().includes(clientSearch.toLowerCase()))
+                      .map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => { setForm((f) => ({ ...f, client_id: c.id })); setClientDropdownOpen(false); setClientSearch(''); }}
+                          className={`w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-border/5 ${form.client_id === c.id ? 'text-primary font-medium bg-primary/5' : 'text-text-primary'}`}
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                    {clients.filter((c) => c.name.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
+                      <p className="px-4 py-3 text-sm text-text-secondary">Δεν βρέθηκαν εντολείς.</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-
-          <div>
-            <label className="block text-sm text-text-secondary mb-1">Επόμενη Κρίσιμη Ημερομηνία</label>
-            <input
-              className="input w-full"
-              type="date"
-              value={form.next_critical_date}
-              onChange={set('next_critical_date')}
-            />
-          </div>
 
           <div>
             <label className="block text-sm text-text-secondary mb-1">Περιγραφή</label>

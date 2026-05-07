@@ -5,7 +5,9 @@ import { createCall, searchContactsForCall, searchCasesForCall } from '../callUt
 import { createContact } from '../../Contacts/contactUtils';
 import { createTask } from '../../Tasks/taskUtils';
 import TaskForm, { type TaskFormValues } from '../../Tasks/TaskForm';
+import NewContactModal from '../../Contacts/modals/NewContactModal';
 import type { CallFormData } from '../types';
+import type { ContactFormData } from '../../Contacts/types';
 
 type ContactHit = { id: string; name: string; phone: string | null };
 
@@ -37,6 +39,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showNewContactModal, setShowNewContactModal] = useState(false);
   const [pendingTask, setPendingTask] = useState<TaskFormValues | null>(null);
   const [taskSaving, setTaskSaving] = useState(false);
 
@@ -72,6 +75,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
       setError(null);
       setPendingTask(null);
       setShowTaskModal(false);
+      setShowNewContactModal(false);
       setTimeout(() => contactInputRef.current?.focus(), 50);
     }
   }, [open, initialPhone]);
@@ -140,22 +144,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
     setSaving(true);
     setError(null);
     try {
-      let finalForm = { ...form };
-
-      // No contact selected but user typed something → create new contact
-      if (!selectedContact && contactQuery.trim()) {
-        const newContact = await createContact(tenantId, {
-          name: contactQuery.trim(),
-          phone: form.phone,
-          phone2: '', email: '', role: '', notes: '',
-          vat: '', address: '', professional_status: '',
-          father_name: '', mother_name: '', birthdate: '',
-          amka: '', iban: '', at: '', taxis_username: '', taxis_password: '',
-        });
-        finalForm = { ...finalForm, contact_id: newContact.id, caller_name: newContact.name };
-      }
-
-      const callId = await createCall(tenantId, finalForm);
+      const callId = await createCall(tenantId, form);
       if (form.create_task && pendingTask) {
         await createTask(tenantId, {
           title: pendingTask.title,
@@ -177,6 +166,12 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
     }
   };
 
+  const handleNewContact = async (data: ContactFormData) => {
+    const newContact = await createContact(tenantId, data);
+    selectContact({ id: newContact.id, name: newContact.name, phone: newContact.phone ?? null });
+    setShowNewContactModal(false);
+  };
+
   const handleTaskSubmit = (values: TaskFormValues) => {
     setPendingTask(values);
     setShowTaskModal(false);
@@ -189,6 +184,14 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
 
   return (
     <>
+    <NewContactModal
+      open={showNewContactModal}
+      onClose={() => setShowNewContactModal(false)}
+      onSubmit={handleNewContact}
+      initialPhone={form.phone || contactQuery.trim()}
+      tenantId={tenantId}
+      zIndex="z-[70]"
+    />
     {showTaskModal && (
       <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
         <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl">
@@ -295,10 +298,14 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
                       </button>
                     ))}
                     {showCreateNew && (
-                      <div className="flex items-center gap-3 px-4 py-2.5 border-t border-border/10 text-xs text-text-secondary">
-                        <UserPlus className="h-4 w-4 shrink-0" />
-                        Δεν βρέθηκε — θα δημιουργηθεί νέα επαφή «<span className="text-text-primary font-medium">{contactQuery.trim()}</span>»
-                      </div>
+                      <button
+                        type="button"
+                        onMouseDown={() => { setShowContactDrop(false); setShowNewContactModal(true); }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 border-t border-border/10 hover:bg-primary/5 transition-colors cursor-pointer text-left"
+                      >
+                        <UserPlus className="h-4 w-4 text-primary shrink-0" />
+                        <span className="text-sm text-primary font-medium">Δημιουργία νέας επαφής «{contactQuery.trim()}»</span>
+                      </button>
                     )}
                   </div>
                 )}

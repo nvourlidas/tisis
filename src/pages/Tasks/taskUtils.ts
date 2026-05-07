@@ -42,12 +42,13 @@ export type Task = {
   // joined
   case_code?: string | null;
   case_title?: string | null;
+  client_name?: string | null;
 };
 
 export async function fetchAllTasks(tenantId: string): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')
-    .select('*, cases(code, title)')
+    .select('*, cases(code, title, clients(name))')
     .eq('tenant_id', tenantId)
     .order('due_date', { ascending: true, nullsFirst: false });
   if (error) throw error;
@@ -56,6 +57,7 @@ export async function fetchAllTasks(tenantId: string): Promise<Task[]> {
     due_date: r.due_date ? r.due_date.slice(0, 10) : null,
     case_code: r.cases?.code ?? null,
     case_title: r.cases?.title ?? null,
+    client_name: r.cases?.clients?.name ?? null,
     category: r.category ?? null,
     extra_data: r.extra_data ?? null,
     fee: r.fee ?? null,

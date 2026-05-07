@@ -15,7 +15,7 @@ import type { CaseFormData } from '../Cases/types';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
 import NewCaseModal from '../Cases/modals/NewCaseModal';
 
-type CaseSummary = { id: string; code: string; title: string; status: string; next_critical_date: string | null };
+type CaseSummary = { id: string; code: string; title: string; status: string; created_at: string };
 
 const STATUS_LABELS: Record<string, string> = {
   active:  'Ενεργή',
@@ -60,15 +60,11 @@ const CASE_COLUMNS: ColumnDef<CaseSummary>[] = [
     sortValue: (c) => c.status,
   },
   {
-    key: 'next_critical_date',
-    header: 'Επόμενη Ημ/νία',
-    render: (c) => (
-      <span className={c.next_critical_date ? 'text-text-primary font-medium text-xs' : 'text-text-secondary text-xs'}>
-        {c.next_critical_date ? formatDate(c.next_critical_date) : '—'}
-      </span>
-    ),
-    sortValue: (c) => c.next_critical_date ?? '',
-    defaultVisible: false,
+    key: 'created_at',
+    header: 'Ημ/νία Δημιουργίας',
+    render: (c) => <span className="text-text-secondary text-xs">{formatDate(c.created_at)}</span>,
+    sortValue: (c) => c.created_at,
+    defaultVisible: true,
   },
 ];
 
@@ -110,7 +106,7 @@ export default function ClientDetail() {
     setLoading(true);
     Promise.all([
       fetchClient(id),
-      supabase.from('cases').select('id, code, title, status, next_critical_date').eq('client_id', id).order('created_at', { ascending: false }),
+      supabase.from('cases').select('id, code, title, status, created_at').eq('client_id', id).order('created_at', { ascending: false }),
     ]).then(([c, { data: caseData }]) => {
       setClient(c);
       setForm(c ?? {});
@@ -127,7 +123,7 @@ export default function ClientDetail() {
   const handleNewCase = async (data: CaseFormData) => {
     const created = await createCase(tenantId, data);
     const { data: caseData } = await supabase
-      .from('cases').select('id, code, title, status, next_critical_date')
+      .from('cases').select('id, code, title, status, created_at')
       .eq('client_id', id).order('created_at', { ascending: false });
     setCases(caseData ?? []);
     navigate(`/cases/${created.id}`);

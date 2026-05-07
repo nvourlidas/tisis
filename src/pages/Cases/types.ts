@@ -18,7 +18,6 @@ export type Case = {
   status: CaseStatus;
   stage_id: string | null;
   description: string | null;
-  next_critical_date: string | null;
   google_drive_url: string | null;
   google_drive_folder_id: string | null;
   notes: string | null;
@@ -37,7 +36,6 @@ export type CaseFormData = {
   type: CaseType | '';
   stage_id: string;
   description: string;
-  next_critical_date: string;
   google_drive_url: string;
   notes: string;
 };

@@ -1,22 +1,23 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Phone, AlertCircle, CheckSquare, CalendarClock,
+  Phone, CheckSquare, CalendarClock,
   Check, RotateCcw, PhoneIncoming, PhoneOutgoing, Plus,
   ChevronLeft, ChevronRight, X as XIcon,
-  Clock, LinkIcon,
+  Clock, LinkIcon, Users, Briefcase,
 } from 'lucide-react';
 import { useAuth } from '../auth';
 import { fetchAllTasks, completeTask, reopenTask, createTask } from './Tasks/taskUtils';
 import { fetchCalls, linkCallToCase, searchCasesForCall } from './Calls/callUtils';
 import { supabase } from '../lib/supabase';
 import NewCallModal from './Calls/modals/NewCallModal';
+import TaskDetailModal from './Tasks/TaskDetailModal';
+import { CasesLineChart } from './Cases/components/CasesLineChart';
+import { ClientsLineChart } from './Clients/components/ClientsLineChart';
 import TaskForm, { type TaskFormValues } from './Tasks/TaskForm';
 import type { Task, TaskExpense } from './Tasks/taskUtils';
 import type { Call } from './Calls/types';
 import { formatDate } from '../lib/dateUtils';
-
-type CriticalCase = { id: string; code: string; title: string; next_critical_date: string };
 
 export default function Dashboard() {
   const { profile } = useAuth();
@@ -25,33 +26,30 @@ export default function Dashboard() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [calls, setCalls] = useState<Call[]>([]);
-  const [criticalCases, setCriticalCases] = useState<CriticalCase[]>([]);
+  const [totalClients, setTotalClients] = useState<number | null>(null);
+  const [totalActiveCases, setTotalActiveCases] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNewCall, setShowNewCall] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [todayPage, setTodayPage] = useState(0);
+  const [overduePage, setOverduePage] = useState(0);
+  const PAGE_SIZE = 4;
 
   const load = async () => {
     if (!tenantId) return;
     setLoading(true);
-    const today = new Date().toISOString().slice(0, 10);
-    const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-
-    const [t, c, { data: cc }] = await Promise.all([
+    const [t, c, { count: clientCount }, { count: activeCaseCount }] = await Promise.all([
       fetchAllTasks(tenantId),
       fetchCalls(tenantId),
-      supabase
-        .from('cases')
-        .select('id, code, title, next_critical_date')
-        .eq('tenant_id', tenantId)
-        .neq('status', 'closed')
-        .gte('next_critical_date', today)
-        .lte('next_critical_date', in7)
-        .order('next_critical_date'),
+      supabase.from('clients').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+      supabase.from('cases').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'active'),
     ]);
 
     setTasks(t);
     setCalls(c);
-    setCriticalCases(cc ?? []);
+    setTotalClients(clientCount ?? 0);
+    setTotalActiveCases(activeCaseCount ?? 0);
     setLoading(false);
   };
 
@@ -92,114 +90,64 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* ── Stat cards ── */}
-      {!loading && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard
-            icon={<CheckSquare className="h-5 w-5" />}
-            label="Σήμερα"
-            value={todayTasks.length}
-            color="blue"
-            delay="stagger-1"
-            onClick={() => navigate('/tasks')}
-          />
-          <StatCard
-            icon={<AlertCircle className="h-5 w-5" />}
-            label="Ληξιπρόθεσμες"
-            value={overdue.length}
-            color={overdue.length > 0 ? 'orange' : 'gray'}
-            delay="stagger-2"
-            onClick={() => navigate('/tasks')}
-            pulse={overdue.length > 0}
-          />
-          <StatCard
-            icon={<LinkIcon className="h-5 w-5" />}
-            label="Χωρίς Υπόθεση"
-            value={unlinkedCalls.length}
-            color={unlinkedCalls.length > 0 ? 'amber' : 'gray'}
-            delay="stagger-3"
-            onClick={() => navigate('/calls')}
-          />
-          <StatCard
-            icon={<CalendarClock className="h-5 w-5" />}
-            label="Κρίσιμες (7 ημ.)"
-            value={criticalCases.length}
-            color="purple"
-            delay="stagger-4"
-            onClick={() => navigate('/cases')}
-          />
+      {/* ── Row 1: Metric cards side by side ── */}
+      <div className="grid grid-cols-2 gap-3">
+        <MetricCard
+          icon={<Users className="h-5 w-5" />}
+          label="Σύνολο Εντολέων"
+          value={totalClients}
+          color="#3b82f6"
+          onClick={() => navigate('/clients')}
+        />
+        <MetricCard
+          icon={<Briefcase className="h-5 w-5" />}
+          label="Ενεργές Υποθέσεις"
+          value={totalActiveCases}
+          color="#22c55e"
+          onClick={() => navigate('/cases')}
+        />
+      </div>
+
+      {/* ── Row 2: Cases chart (left) + Today's tasks (right) ── */}
+      {tenantId && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+          <CasesLineChart tenantId={tenantId} />
+          {loading ? (
+            <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
+              <RotateCcw className="h-4 w-4 animate-spin" />
+              Φόρτωση δεδομένων…
+            </div>
+          ) : (
+            <Widget
+              icon={<CheckSquare className="h-4 w-4" />}
+              iconColor="text-blue-500"
+              iconBg="bg-blue-500/10"
+              title="Εργασίες σήμερα"
+              badge={todayTasks.length}
+              action={{ label: 'Όλες', onClick: () => navigate('/tasks') }}
+              scrollable
+            >
+              {todayTasks.length === 0 ? (
+                <EmptyState icon={<CheckSquare className="h-8 w-8 opacity-20" />} text="Δεν υπάρχουν εργασίες για σήμερα." />
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    {todayTasks.slice(todayPage * PAGE_SIZE, (todayPage + 1) * PAGE_SIZE).map((task) => (
+                      <TaskRow key={task.id} task={task} toggling={toggling} onToggle={toggle} onNavigate={navigate} onSelect={setSelectedTask} />
+                    ))}
+                  </div>
+                  <Pagination page={todayPage} total={todayTasks.length} pageSize={PAGE_SIZE} onChange={setTodayPage} />
+                </>
+              )}
+            </Widget>
+          )}
         </div>
       )}
 
-      {loading ? (
-        <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
-          <RotateCcw className="h-4 w-4 animate-spin" />
-          Φόρτωση δεδομένων…
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Today's tasks */}
-          <Widget
-            icon={<CheckSquare className="h-4 w-4" />}
-            iconColor="text-blue-500"
-            iconBg="bg-blue-500/10"
-            title={`Εργασίες σήμερα`}
-            badge={todayTasks.length}
-            action={{ label: 'Όλες', onClick: () => navigate('/tasks') }}
-            delay="stagger-1"
-          >
-            {todayTasks.length === 0 ? (
-              <EmptyState icon={<CheckSquare className="h-8 w-8 opacity-20" />} text="Δεν υπάρχουν εργασίες για σήμερα." />
-            ) : (
-              <div className="space-y-2">
-                {todayTasks.map((task) => (
-                  <TaskRow key={task.id} task={task} toggling={toggling} onToggle={toggle} onNavigate={navigate} />
-                ))}
-              </div>
-            )}
-          </Widget>
-
-          {/* Critical dates */}
-          <Widget
-            icon={<CalendarClock className="h-4 w-4" />}
-            iconColor="text-purple-500"
-            iconBg="bg-purple-500/10"
-            title="Κρίσιμες ημερομηνίες"
-            badge={criticalCases.length}
-            badgeLabel="επόμ. 7 ημ."
-            action={criticalCases.length > 0 ? { label: 'Υποθέσεις', onClick: () => navigate('/cases') } : undefined}
-            delay="stagger-2"
-          >
-            {criticalCases.length === 0 ? (
-              <EmptyState icon={<CalendarClock className="h-8 w-8 opacity-20" />} text="Δεν υπάρχουν κρίσιμες ημερομηνίες." />
-            ) : (
-              <div className="space-y-2">
-                {criticalCases.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => navigate(`/cases/${c.id}`)}
-                    className="w-full flex items-center gap-3 rounded-xl border border-border/10 bg-background hover:bg-purple-500/5 hover:border-purple-500/20 px-4 py-3 transition-all cursor-pointer text-left group"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center shrink-0">
-                      <CalendarClock className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-text-secondary">{c.code}</span>
-                        <span className="text-sm text-text-primary truncate">{c.title}</span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-purple-500 shrink-0 font-semibold bg-purple-500/10 px-2 py-0.5 rounded-full">
-                      {formatDate(c.next_critical_date, { day: '2-digit', month: 'short' })}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </Widget>
-
-          {/* Overdue tasks */}
-          {overdue.length > 0 && (
+      {/* ── Row 3: Overdue tasks (left) + Clients chart (right) ── */}
+      {tenantId && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+          {!loading && (
             <Widget
               icon={<Clock className="h-4 w-4" />}
               iconColor="text-orange-500"
@@ -207,58 +155,54 @@ export default function Dashboard() {
               title="Ληξιπρόθεσμες εργασίες"
               badge={overdue.length}
               badgeColor="bg-orange-500/15 text-orange-500"
-              action={{ label: 'Όλες οι εργασίες', onClick: () => navigate('/tasks') }}
-              delay="stagger-3"
+              action={overdue.length > 0 ? { label: 'Όλες οι εργασίες', onClick: () => navigate('/tasks') } : undefined}
+              scrollable
             >
-              <div className="space-y-2">
-                {overdue.slice(0, 4).map((task) => (
-                  <TaskRow key={task.id} task={task} toggling={toggling} onToggle={toggle} onNavigate={navigate} />
-                ))}
-              </div>
-              {overdue.length > 4 && (
-                <button onClick={() => navigate('/tasks')} className="text-xs text-orange-500 hover:underline cursor-pointer mt-1">
-                  +{overdue.length - 4} ακόμα…
-                </button>
+              {overdue.length === 0 ? (
+                <EmptyState icon={<Clock className="h-8 w-8 opacity-20" />} text="Δεν υπάρχουν ληξιπρόθεσμες εργασίες." />
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    {overdue.slice(overduePage * PAGE_SIZE, (overduePage + 1) * PAGE_SIZE).map((task) => (
+                      <TaskRow key={task.id} task={task} toggling={toggling} onToggle={toggle} onNavigate={navigate} onSelect={setSelectedTask} />
+                    ))}
+                  </div>
+                  <Pagination page={overduePage} total={overdue.length} pageSize={PAGE_SIZE} onChange={setOverduePage} />
+                </>
               )}
             </Widget>
           )}
-
-          {/* Unlinked calls */}
-          {unlinkedCalls.length > 0 && (
-            <Widget
-              icon={<Phone className="h-4 w-4" />}
-              iconColor="text-amber-500"
-              iconBg="bg-amber-500/10"
-              title="Κλήσεις χωρίς υπόθεση"
-              badge={unlinkedCalls.length}
-              badgeColor="bg-amber-500/15 text-amber-500"
-              action={{ label: 'Προβολή όλων', onClick: () => navigate('/calls') }}
-              className="md:col-span-3"
-              delay="stagger-4"
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {unlinkedCalls.slice(0, 4).map((call) => (
-                  <UnlinkedCallRow
-                    key={call.id}
-                    call={call}
-                    tenantId={tenantId}
-                    onLinked={load}
-                  />
-                ))}
-              </div>
-              {unlinkedCalls.length > 4 && (
-                <button onClick={() => navigate('/calls')} className="text-xs text-amber-500 hover:underline cursor-pointer mt-1">
-                  +{unlinkedCalls.length - 4} ακόμα…
-                </button>
-              )}
-            </Widget>
-          )}
+          <ClientsLineChart tenantId={tenantId} />
         </div>
+      )}
+
+      {/* ── Row 4: Unlinked calls ── */}
+      {!loading && unlinkedCalls.length > 0 && (
+        <Widget
+          icon={<Phone className="h-4 w-4" />}
+          iconColor="text-amber-500"
+          iconBg="bg-amber-500/10"
+          title="Κλήσεις χωρίς υπόθεση"
+          badge={unlinkedCalls.length}
+          badgeColor="bg-amber-500/15 text-amber-500"
+          action={{ label: 'Προβολή όλων', onClick: () => navigate('/calls') }}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {unlinkedCalls.slice(0, 4).map((call) => (
+              <UnlinkedCallRow key={call.id} call={call} tenantId={tenantId} onLinked={load} />
+            ))}
+          </div>
+          {unlinkedCalls.length > 4 && (
+            <button onClick={() => navigate('/calls')} className="text-xs text-amber-500 hover:underline cursor-pointer mt-1">
+              +{unlinkedCalls.length - 4} ακόμα…
+            </button>
+          )}
+        </Widget>
       )}
 
       {/* Calendar */}
       {!loading && (
-        <DashboardCalendar tasks={tasks} calls={calls} onNavigate={navigate} tenantId={tenantId} onTaskCreated={load} onToggleTask={toggle} toggling={toggling} />
+        <DashboardCalendar tasks={tasks} calls={calls} onNavigate={navigate} tenantId={tenantId} onTaskCreated={load} onToggleTask={toggle} toggling={toggling} onSelectTask={setSelectedTask} />
       )}
 
       <NewCallModal
@@ -266,48 +210,50 @@ export default function Dashboard() {
         onClose={() => setShowNewCall(false)}
         onCreated={() => load()}
       />
+      <TaskDetailModal
+        task={selectedTask}
+        onClose={() => setSelectedTask(null)}
+        onNavigateToCase={(caseId) => { setSelectedTask(null); navigate(`/cases/${caseId}`); }}
+      />
     </div>
   );
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────────────
+// ── Metric Card ───────────────────────────────────────────────────────────────
 
-type StatColor = 'blue' | 'orange' | 'amber' | 'purple' | 'green' | 'gray';
+function hexToRgba(hex: string, alpha = 0.12) {
+  const m = hex.replace('#', '');
+  const bigint = parseInt(m.length === 3 ? m.split('').map((c) => c + c).join('') : m, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
-const COLOR_MAP: Record<StatColor, { bg: string; text: string; ring: string }> = {
-  blue:   { bg: 'bg-blue-500/10',   text: 'text-blue-500',   ring: 'hover:ring-blue-500/20' },
-  orange: { bg: 'bg-orange-500/10', text: 'text-orange-500', ring: 'hover:ring-orange-500/20' },
-  amber:  { bg: 'bg-amber-500/10',  text: 'text-amber-500',  ring: 'hover:ring-amber-500/20' },
-  purple: { bg: 'bg-purple-500/10', text: 'text-purple-500', ring: 'hover:ring-purple-500/20' },
-  green:  { bg: 'bg-green-500/10',  text: 'text-green-500',  ring: 'hover:ring-green-500/20' },
-  gray:   { bg: 'bg-border/5',      text: 'text-text-secondary', ring: 'hover:ring-border/20' },
-};
-
-function StatCard({ icon, label, value, color, delay, onClick, pulse }: {
+function MetricCard({ icon, label, value, color, onClick }: {
   icon: React.ReactNode;
   label: string;
-  value: number;
-  color: StatColor;
-  delay: string;
+  value: number | null;
+  color: string;
   onClick?: () => void;
-  pulse?: boolean;
 }) {
-  const c = COLOR_MAP[color];
   return (
     <button
       onClick={onClick}
-      className={[
-        'animate-fade-in-up text-left rounded-xl border border-border/10 bg-secondary-background p-4 space-y-3',
-        'ring-1 ring-transparent transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer',
-        c.ring, delay,
-      ].join(' ')}
+      className="animate-fade-in-up text-left flex items-center gap-3 rounded-xl p-4 w-full transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer"
+      style={{ backgroundColor: hexToRgba(color, 0.12), borderLeft: `4px solid ${color}` }}
     >
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${c.bg} ${c.text} ${pulse ? 'animate-pulse-soft' : ''}`}>
+      <div
+        className="flex h-10 w-10 items-center justify-center rounded-full shrink-0"
+        style={{ backgroundColor: hexToRgba(color, 0.18), color }}
+      >
         {icon}
       </div>
       <div>
-        <p className={`text-2xl font-bold ${c.text}`}>{value}</p>
-        <p className="text-xs text-text-secondary mt-0.5">{label}</p>
+        <p className="text-2xl font-semibold leading-none" style={{ color }}>
+          {value === null ? '…' : value}
+        </p>
+        <p className="text-xs text-text-secondary mt-1">{label}</p>
       </div>
     </button>
   );
@@ -317,7 +263,7 @@ function StatCard({ icon, label, value, color, delay, onClick, pulse }: {
 
 function Widget({
   icon, iconColor, iconBg, title, badge, badgeLabel, badgeColor,
-  action, children, className = '', delay = '',
+  action, children, className = '', delay = '', scrollable = false,
 }: {
   icon: React.ReactNode;
   iconColor: string;
@@ -330,11 +276,12 @@ function Widget({
   children: React.ReactNode;
   className?: string;
   delay?: string;
+  scrollable?: boolean;
 }) {
   const bc = badgeColor ?? 'bg-primary/10 text-primary';
   return (
-    <div className={`animate-fade-in-up rounded-xl border border-border/10 bg-secondary-background p-5 space-y-3 ${className} ${delay}`}>
-      <div className="flex items-center justify-between gap-2">
+    <div className={`animate-fade-in-up rounded-xl border border-border/10 bg-secondary-background p-5 ${scrollable ? 'flex flex-col h-full' : 'space-y-3'} ${className} ${delay}`}>
+      <div className={`flex items-center justify-between gap-2 ${scrollable ? 'mb-3 shrink-0' : ''}`}>
         <div className="flex items-center gap-2.5">
           <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${iconBg} ${iconColor}`}>
             {icon}
@@ -352,12 +299,42 @@ function Widget({
           </button>
         )}
       </div>
-      {children}
+      <div className={scrollable ? 'flex-1 overflow-y-auto min-h-0' : ''}>
+        {children}
+      </div>
     </div>
   );
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
+
+function Pagination({ page, total, pageSize, onChange }: {
+  page: number; total: number; pageSize: number; onChange: (p: number) => void;
+}) {
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between pt-2 border-t border-border/10 mt-2">
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page === 0}
+        className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-border/5 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <span className="text-xs text-text-secondary">
+        {page + 1} / {totalPages}
+      </span>
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page >= totalPages - 1}
+        className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-border/5 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
 
 function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
@@ -370,23 +347,27 @@ function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 // ── Task row ──────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, toggling, onToggle, onNavigate }: {
+function TaskRow({ task, toggling, onToggle, onNavigate, onSelect }: {
   task: Task;
   toggling: string | null;
   onToggle: (t: Task) => void;
   onNavigate: ReturnType<typeof useNavigate>;
+  onSelect?: (t: Task) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const overdue = task.status === 'open' && !!task.due_date && task.due_date < today;
 
   return (
-    <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-all ${
-      overdue
-        ? 'border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/8'
-        : 'border-border/10 bg-background hover:bg-secondary-background'
-    }`}>
+    <div
+      onClick={() => onSelect?.(task)}
+      className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-all ${onSelect ? 'cursor-pointer' : ''} ${
+        overdue
+          ? 'border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/8'
+          : 'border-border/10 bg-background hover:bg-secondary-background'
+      }`}
+    >
       <button
-        onClick={() => onToggle(task)}
+        onClick={(e) => { e.stopPropagation(); onToggle(task); }}
         disabled={toggling === task.id}
         className={[
           'mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
@@ -404,11 +385,14 @@ function TaskRow({ task, toggling, onToggle, onNavigate }: {
         <span className="text-sm text-text-primary">{task.title}</span>
         {task.case_code && (
           <button
-            onClick={() => onNavigate(`/cases/${task.case_id}`)}
+            onClick={(e) => { e.stopPropagation(); onNavigate(`/cases/${task.case_id}`); }}
             className="block text-xs text-primary hover:underline cursor-pointer mt-0.5 font-mono"
           >
             {task.case_code} — {task.case_title}
           </button>
+        )}
+        {task.client_name && (
+          <span className="block text-xs text-text-secondary mt-0.5">{task.client_name}</span>
         )}
       </div>
       {task.due_date && (
@@ -551,7 +535,7 @@ function weekStart(dateStr: string): string {
 }
 
 function DashboardCalendar({
-  tasks, calls, onNavigate, tenantId, onTaskCreated, onToggleTask, toggling,
+  tasks, calls, onNavigate, tenantId, onTaskCreated, onToggleTask, toggling, onSelectTask,
 }: {
   tasks: Task[];
   calls: Call[];
@@ -560,6 +544,7 @@ function DashboardCalendar({
   onTaskCreated: () => void;
   onToggleTask: (t: Task) => void;
   toggling: string | null;
+  onSelectTask: (t: Task) => void;
 }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
@@ -719,7 +704,7 @@ function DashboardCalendar({
           })}
         </div>
         {selectedDay && (
-          <DayPanel day={selectedDay} items={selectedItems} todayStr={todayStr} onNavigate={onNavigate} onClose={() => setSelectedDay(null)} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} />
+          <DayPanel day={selectedDay} items={selectedItems} todayStr={todayStr} onNavigate={onNavigate} onClose={() => setSelectedDay(null)} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} />
         )}
       </>)}
 
@@ -765,12 +750,12 @@ function DashboardCalendar({
         </div>
       )}
       {view === 'week' && (
-        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} />
+        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} />
       )}
 
       {/* Day view */}
       {view === 'day' && (
-        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} />
+        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} />
       )}
 
       {/* New task modal */}
@@ -800,7 +785,7 @@ function DashboardCalendar({
   );
 }
 
-function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onToggleTask, toggling }: {
+function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onToggleTask, toggling, onSelectTask }: {
   day: string;
   items: CalendarItem[];
   todayStr: string;
@@ -809,6 +794,7 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
   onAddTask: (date: string) => void;
   onToggleTask: (t: Task) => void;
   toggling: string | null;
+  onSelectTask: (t: Task) => void;
 }) {
   return (
     <div className="border-t border-border/10 pt-4 space-y-2 animate-fade-in">
@@ -843,10 +829,10 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
               const totalExpenses = item.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
               const hasFinancials = item.fee || (item.expenses?.length ?? 0) > 0;
               return (
-                <div key={item.id} className={`rounded-xl border px-4 py-3 space-y-2 transition-all ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/15 bg-green-500/5 opacity-70' : 'border-border/10 bg-background'}`}>
+                <div key={item.id} onClick={() => onSelectTask(item as unknown as Task)} className={`rounded-xl border px-4 py-3 space-y-2 transition-all cursor-pointer ${overdue ? 'border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/8' : done ? 'border-green-500/15 bg-green-500/5 opacity-70 hover:opacity-90' : 'border-border/10 bg-background hover:bg-secondary-background'}`}>
                   <div className="flex items-start gap-3">
                     <button
-                      onClick={() => onToggleTask(item as unknown as Task)}
+                      onClick={(e) => { e.stopPropagation(); onToggleTask(item as unknown as Task); }}
                       disabled={toggling === item.id}
                       className={[
                         'mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
@@ -861,7 +847,7 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                       {item.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{item.description}</p>}
                       <div className="flex flex-wrap items-center gap-2 mt-1">
                         {item.case_code && (
-                          <button onClick={() => item.case_id && onNavigate(`/cases/${item.case_id}`)} className="text-xs text-primary hover:underline cursor-pointer font-mono">
+                          <button onClick={(e) => { e.stopPropagation(); item.case_id && onNavigate(`/cases/${item.case_id}`); }} className="text-xs text-primary hover:underline cursor-pointer font-mono">
                             {item.case_code} — {item.case_title}
                           </button>
                         )}

@@ -67,15 +67,11 @@ const COLUMNS: ColumnDef<Case>[] = [
     sortValue: (c) => c.status,
   },
   {
-    key: 'next_critical_date',
-    header: 'Επόμενη Ημ/νία',
-    render: (c) => (
-      <span className={c.next_critical_date ? 'text-text-primary font-medium' : 'text-text-secondary'}>
-        {c.next_critical_date ? formatDate(c.next_critical_date) : '—'}
-      </span>
-    ),
-    sortValue: (c) => c.next_critical_date ?? '',
-    defaultVisible: false,
+    key: 'created_at',
+    header: 'Ημ/νία Δημιουργίας',
+    render: (c) => <span className="text-text-secondary">{formatDate(c.created_at)}</span>,
+    sortValue: (c) => c.created_at,
+    defaultVisible: true,
   },
   {
     key: 'type',

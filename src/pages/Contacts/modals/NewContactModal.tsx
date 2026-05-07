@@ -9,6 +9,7 @@ type Props = {
   onSubmit: (data: ContactFormData) => Promise<void>;
   initialPhone?: string;
   tenantId?: string;
+  zIndex?: string;
 };
 
 const empty: ContactFormData = {
@@ -18,7 +19,7 @@ const empty: ContactFormData = {
   amka: '', iban: '', at: '', taxis_username: '', taxis_password: '',
 };
 
-export default function NewContactModal({ open, onClose, onSubmit, initialPhone, tenantId = '' }: Props) {
+export default function NewContactModal({ open, onClose, onSubmit, initialPhone, tenantId = '', zIndex = 'z-50' }: Props) {
   const [form, setForm] = useState<ContactFormData>(() => ({ ...empty, phone: initialPhone ?? '' }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +45,7 @@ export default function NewContactModal({ open, onClose, onSubmit, initialPhone,
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm`}>
       <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/10 sticky top-0 bg-secondary-background z-10">
           <h2 className="text-base font-semibold text-text-primary">Νέα Επαφή</h2>
