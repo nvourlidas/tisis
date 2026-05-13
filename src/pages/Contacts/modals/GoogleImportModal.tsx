@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../auth';
 
@@ -8,6 +9,12 @@ type GoogleContact = {
   phone: string | null;
   phone2: string | null;
   email: string | null;
+  organization: string | null;
+  job_title: string | null;
+  website: string | null;
+  birthdate: string | null;
+  address: string | null;
+  notes: string | null;
 };
 
 type ImportStatus = 'idle' | 'fetching' | 'ready' | 'importing' | 'done' | 'error' | 'no_token';
@@ -16,13 +23,22 @@ function normalizePhone(raw: string): string {
   return raw.replace(/\s+/g, '').replace(/^00/, '+');
 }
 
+function parseBirthday(b: any): string | null {
+  const d = b?.date;
+  if (!d?.month || !d?.day || !d?.year) return null;
+  const year = String(d.year).padStart(4, '0');
+  const month = String(d.month).padStart(2, '0');
+  const day = String(d.day).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 async function fetchGoogleContacts(token: string): Promise<GoogleContact[]> {
   let all: GoogleContact[] = [];
   let pageToken: string | undefined;
 
   do {
     const url = new URL('https://people.googleapis.com/v1/people/me/connections');
-    url.searchParams.set('personFields', 'names,emailAddresses,phoneNumbers');
+    url.searchParams.set('personFields', 'names,emailAddresses,phoneNumbers,organizations,urls,birthdays,addresses,biographies');
     url.searchParams.set('pageSize', '1000');
     if (pageToken) url.searchParams.set('pageToken', pageToken);
 
@@ -43,6 +59,12 @@ async function fetchGoogleContacts(token: string): Promise<GoogleContact[]> {
         phone: phones[0] ?? null,
         phone2: phones[1] ?? null,
         email: emails[0] ?? null,
+        organization: p.organizations?.[0]?.name?.trim() ?? null,
+        job_title: p.organizations?.[0]?.title?.trim() ?? null,
+        website: p.urls?.[0]?.value?.trim() ?? null,
+        birthdate: parseBirthday(p.birthdays?.[0]),
+        address: p.addresses?.[0]?.streetAddress?.trim() ?? null,
+        notes: p.biographies?.[0]?.value?.trim() ?? null,
       });
     }
     pageToken = json.nextPageToken;
@@ -66,6 +88,17 @@ export default function GoogleImportModal({ open, onClose, onImported }: Props) 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [importedCount, setImportedCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      c.phone?.includes(q) ||
+      c.email?.toLowerCase().includes(q)
+    );
+  }, [contacts, searchQuery]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,49 +137,65 @@ export default function GoogleImportModal({ open, onClose, onImported }: Props) 
   };
 
   const handleImport = async () => {
+    console.log('[Import] handleImport called, tenantId:', tenantId, 'selected:', selected.size);
     if (!tenantId || selected.size === 0) return;
     setStatus('importing');
     setError(null);
 
     const toImport = contacts.filter((c) => selected.has(c.resourceName));
 
-    // Fetch existing phones/emails to skip true duplicates
+    // Fetch existing contacts to detect duplicates and backfill google_contact_id
     const { data: existing } = await supabase
       .from('contacts')
-      .select('phone, email')
+      .select('id, phone, email, google_contact_id')
       .eq('tenant_id', tenantId);
 
-    const existingPhones = new Set((existing ?? []).map((c) => c.phone).filter(Boolean));
-    const existingEmails = new Set((existing ?? []).map((c) => c.email).filter(Boolean));
+    const byPhone = new Map((existing ?? []).filter(c => c.phone).map(c => [c.phone, c]));
+    const byEmail = new Map((existing ?? []).filter(c => c.email).map(c => [c.email, c]));
 
-    const rows = toImport
-      .filter((c) => {
-        if (c.phone && existingPhones.has(c.phone)) return false;
-        if (c.email && existingEmails.has(c.email)) return false;
-        return true;
-      })
-      .map((c) => ({
-        tenant_id: tenantId,
-        name: c.name,
-        phone: c.phone,
-        phone2: c.phone2,
-        email: c.email,
-      }));
+    const toInsert: typeof toImport = [];
+    const toBackfill: Array<{ id: string; resourceName: string }> = [];
 
-    if (rows.length === 0) {
-      setImportedCount(0);
-      setStatus('done');
-      return;
+    for (const c of toImport) {
+      const match = (c.phone && byPhone.get(c.phone)) || (c.email && byEmail.get(c.email));
+      if (match) {
+        if (!match.google_contact_id) toBackfill.push({ id: match.id, resourceName: c.resourceName });
+      } else {
+        toInsert.push(c);
+      }
     }
 
-    const { error: insertError } = await supabase.from('contacts').insert(rows);
-    if (insertError) {
-      setError(insertError.message);
-      setStatus('error');
-      return;
+    for (const { id, resourceName } of toBackfill) {
+      await supabase.from('contacts').update({ google_contact_id: resourceName }).eq('id', id);
     }
 
-    setImportedCount(rows.length);
+    console.log('[Import] toInsert:', toInsert.length, 'backfill:', toBackfill.length, 'tenantId:', tenantId);
+
+    const rows = toInsert.map((c) => ({
+      tenant_id: tenantId,
+      name: c.name,
+      phone: c.phone,
+      phone2: c.phone2,
+      email: c.email,
+      organization: c.organization,
+      job_title: c.job_title,
+      website: c.website,
+      birthdate: c.birthdate,
+      address: c.address,
+      notes: c.notes,
+      google_contact_id: c.resourceName,
+    }));
+
+    if (rows.length > 0) {
+      const { error: insertError } = await supabase.from('contacts').insert(rows);
+      if (insertError) {
+        setError(insertError.message);
+        setStatus('error');
+        return;
+      }
+    }
+
+    setImportedCount(rows.length + toBackfill.length);
     setStatus('done');
     onImported();
   };
@@ -186,20 +235,30 @@ export default function GoogleImportModal({ open, onClose, onImported }: Props) 
               <p className="text-sm text-text-secondary">
                 {importedCount === 0
                   ? 'Δεν εισήχθησαν νέες επαφές (όλες υπήρχαν ήδη).'
-                  : `Εισήχθησαν ${importedCount} νέες επαφές.`}
+                  : `Ολοκληρώθηκε για ${importedCount} επαφές.`}
               </p>
             </div>
           )}
 
           {status === 'ready' && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-text-secondary">{contacts.length} επαφές βρέθηκαν</span>
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
+                <input
+                  className="input w-full pl-9!"
+                  placeholder="Αναζήτηση επαφής…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm text-text-secondary">{filtered.length} επαφές</span>
                 <button onClick={toggleAll} className="text-xs text-primary hover:underline cursor-pointer">
                   {selected.size === contacts.length ? 'Αποεπιλογή όλων' : 'Επιλογή όλων'}
                 </button>
               </div>
-              {contacts.map((c) => (
+              {filtered.map((c) => (
                 <label
                   key={c.resourceName}
                   className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-border/10 cursor-pointer"

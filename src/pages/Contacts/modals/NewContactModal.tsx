@@ -14,7 +14,7 @@ type Props = {
 
 const empty: ContactFormData = {
   name: '', phone: '', phone2: '', email: '', role: '', notes: '',
-  vat: '', address: '', professional_status: '',
+  vat: '', address: '', job_title: '', organization: '', website: '',
   father_name: '', mother_name: '', birthdate: '',
   amka: '', iban: '', at: '', taxis_username: '', taxis_password: '',
 };
@@ -85,12 +85,22 @@ export default function NewContactModal({ open, onClose, onSubmit, initialPhone,
             </div>
             <div>
               <label className="block text-sm text-text-secondary mb-1">Επαγγελματική Ιδιότητα</label>
-              <input className="input w-full" value={form.professional_status} onChange={set('professional_status')} placeholder="π.χ. Ιδιώτης" />
+              <input className="input w-full" value={form.job_title} onChange={set('job_title')} placeholder="π.χ. Δικηγόρος" />
             </div>
           </div>
           <div>
             <label className="block text-sm text-text-secondary mb-1">Διεύθυνση</label>
             <input className="input w-full" value={form.address} onChange={set('address')} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Οργανισμός / Εταιρεία</label>
+              <input className="input w-full" value={form.organization} onChange={set('organization')} />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Ιστοσελίδα</label>
+              <input className="input w-full" type="url" value={form.website} onChange={set('website')} placeholder="https://" />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

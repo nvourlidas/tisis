@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Pencil, Check, X, ExternalLink, User, Tag, Layers, Globe } from 'lucide-react';
-import { formatDate } from '../../../lib/dateUtils';
 import { updateCase, fetchStages } from '../caseUtils';
 import { fetchClients } from '../../Clients/clientUtils';
 import type { Client } from '../../Clients/types';

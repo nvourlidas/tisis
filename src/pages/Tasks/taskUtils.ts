@@ -5,6 +5,7 @@ export const TASK_CATEGORIES = {
   extrajudicial: 'Εξοδικαστηκές Ενέργιες',
   appointment: 'Επαγγελματικά Ραντεβού',
   file_work: 'Εργασία Φακέλου',
+  court: 'Δικαστήριο',
 } as const;
 
 export type TaskCategory = keyof typeof TASK_CATEGORIES;
@@ -14,7 +15,7 @@ export type LegalActData = {
   creation_date?: string;
   authority?: string;
   gak?: string;
-  eka?: string;
+  eak?: string;
   decision?: { number?: string; date?: string; description?: string };
 };
 

@@ -29,7 +29,7 @@ export default function ContactRoles() {
     setSaving(true);
     setError(null);
     try {
-      await createContactRole(tenantId, newName.trim());
+      await createContactRole(tenantId, newName.trim(), '#6b7280');
       setNewName('');
       load();
     } catch (err: any) {

@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Plus, PhoneIncoming, PhoneOutgoing, X, Link, Phone, RotateCcw } from 'lucide-react';
 import { fetchCaseCalls } from '../caseUtils';
-import { createCall, fetchUnlinkedCalls, linkCallToCase } from '../../Calls/callUtils';
+import { fetchUnlinkedCalls, linkCallToCase } from '../../Calls/callUtils';
+import NewCallModal from '../../Calls/modals/NewCallModal';
 import type { CaseCall } from '../types';
 import type { Call } from '../../Calls/types';
 
 type Props = { caseId: string; tenantId: string };
-
-const emptyForm = {
-  phone: '', caller_name: '', direction: 'incoming' as 'incoming' | 'outgoing',
-  description: '', follow_up_required: false,
-};
 
 type Mode = 'none' | 'new' | 'link';
 
@@ -18,10 +14,6 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
   const [calls, setCalls] = useState<CaseCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<Mode>('none');
-
-  const [form, setForm] = useState({ ...emptyForm });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [unlinked, setUnlinked] = useState<Call[]>([]);
   const [unlinkedLoading, setUnlinkedLoading] = useState(false);
@@ -36,26 +28,9 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
 
   const openMode = (m: Mode) => {
     setMode(prev => prev === m ? 'none' : m);
-    setError(null);
     if (m === 'link') {
       setUnlinkedLoading(true);
       fetchUnlinkedCalls(tenantId).then(setUnlinked).finally(() => setUnlinkedLoading(false));
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await createCall(tenantId, { ...form, case_id: caseId, contact_id: '', create_task: false, task_title: '', task_due_date: '' });
-      setForm({ ...emptyForm });
-      setMode('none');
-      load();
-    } catch (err: any) {
-      setError(err?.message ?? 'Αποτυχία καταχώρησης κλήσης.');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -101,74 +76,12 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
         </div>
       </div>
 
-      {/* New call form */}
-      {mode === 'new' && (
-        <form onSubmit={handleSubmit} className="animate-fade-in-up rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text-primary">Καταχώρηση Κλήσης</h3>
-            <button type="button" onClick={() => setMode('none')} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer transition-colors">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1.5">Τηλέφωνο</label>
-              <input className="input w-full rounded-xl border-border/15" value={form.phone} onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="π.χ. 6912345678" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1.5">Όνομα Καλούντος</label>
-              <input className="input w-full rounded-xl border-border/15" value={form.caller_name} onChange={(e) => setForm(f => ({ ...f, caller_name: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1.5">Κατεύθυνση</label>
-              <div className="flex gap-2">
-                {(['incoming', 'outgoing'] as const).map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setForm(f => ({ ...f, direction: d }))}
-                    className={[
-                      'flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-sm transition-all cursor-pointer font-medium',
-                      form.direction === d
-                        ? d === 'incoming'
-                          ? 'border-green-500/30 bg-green-500/10 text-green-500'
-                          : 'border-blue-500/30 bg-blue-500/10 text-blue-500'
-                        : 'border-border/15 text-text-secondary hover:bg-border/5',
-                    ].join(' ')}
-                  >
-                    {d === 'incoming'
-                      ? <><PhoneIncoming className="h-3.5 w-3.5" />Εισερχόμενη</>
-                      : <><PhoneOutgoing className="h-3.5 w-3.5" />Εξερχόμενη</>}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-2.5 pt-5">
-              <input
-                id="follow_up"
-                type="checkbox"
-                className="rounded border-border/20 cursor-pointer"
-                checked={form.follow_up_required}
-                onChange={(e) => setForm(f => ({ ...f, follow_up_required: e.target.checked }))}
-              />
-              <label htmlFor="follow_up" className="text-sm text-text-secondary cursor-pointer select-none">
-                Απαιτείται Follow-up
-              </label>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-text-secondary mb-1.5">Περιγραφή</label>
-              <textarea className="input w-full rounded-xl border-border/15 resize-none" rows={3} value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} />
-            </div>
-          </div>
-          {error && <p className="text-sm text-danger bg-danger/5 border border-danger/20 rounded-xl px-4 py-2">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setMode('none')} className="px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:bg-border/5 cursor-pointer transition-all">Ακύρωση</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 cursor-pointer transition-all disabled:opacity-60">
-              {saving ? 'Αποθήκευση…' : 'Καταχώρηση'}
-            </button>
-          </div>
-        </form>
-      )}
+      <NewCallModal
+        open={mode === 'new'}
+        onClose={() => setMode('none')}
+        onCreated={() => { setMode('none'); load(); }}
+        initialCaseId={caseId}
+      />
 
       {/* Link existing */}
       {mode === 'link' && (

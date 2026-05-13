@@ -1,4 +1,4 @@
-import { X, CalendarDays, Tag, Briefcase, User, Check, Clock, Euro, Receipt, FileText } from 'lucide-react';
+import { X, CalendarDays, Tag, Briefcase, User, Check, Clock, Euro, Receipt } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { TASK_CATEGORIES } from './taskUtils';
 import type { Task, LegalActData, AppointmentData } from './taskUtils';
@@ -152,7 +152,7 @@ export default function TaskDetailModal({ task, onClose, onNavigateToCase }: Pro
                 <Field label="Ημ/νία Δημιουργίας" value={legalAct.creation_date ? formatDate(legalAct.creation_date) : undefined} />
                 <Field label="Αρχή" value={legalAct.authority} />
                 <Field label="ΓΑΚ" value={legalAct.gak} />
-                <Field label="ΕΚΑ" value={legalAct.eka} />
+                <Field label="ΕΑΚ" value={legalAct.eak} />
               </div>
               {legalAct.decision && (legalAct.decision.number || legalAct.decision.date || legalAct.decision.description) && (
                 <div className="pt-2 border-t border-border/10 space-y-2">
@@ -214,12 +214,6 @@ export default function TaskDetailModal({ task, onClose, onNavigateToCase }: Pro
               )}
             </div>
           )}
-
-          {/* Notes / created at */}
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-            <FileText className="h-3.5 w-3.5 shrink-0" />
-            Δημιουργήθηκε: {new Date(task.created_at).toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-          </div>
 
         </div>
       </div>

@@ -5,7 +5,7 @@
    ========================================================= */
 @theme {
   /* Brand */
-  --color-primary: #2f55d4;
+  --color-primary: #BD9D60;
   --color-secondary: #64748b;
   --color-accent: #f59e0b;
   --color-success: #16a34a;
@@ -29,15 +29,15 @@
    DARK THEME (overrides)
    ========================================================= */
 :root[data-theme="dark"] {
-  --color-primary: #6481f7;
+  --color-primary: #BD9D60;
   --color-secondary: #94a3b8;
   --color-accent: #fbbf24;
   --color-success: #22c55e;
   --color-warning: #fbbf24;
   --color-danger: #f87171;
 
-  --color-background: #0f172a;
-  --color-secondary-background: #1e293b;
+  --color-background: #132139;
+  --color-secondary-background: #071a3b;
   --color-surface: #0b1120;
 
   --color-text-primary: #e2e8f0;

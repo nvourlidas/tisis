@@ -8,7 +8,8 @@ Deno.serve(async (req) => {
     const { tenantId, supabase } = auth
     const {
       id,
-      name, phone, phone2, email, role, notes, vat, address, professional_status,
+      name, phone, phone2, email, role, notes, vat, address,
+      job_title, organization, website,
       father_name, mother_name, birthdate, amka, iban, at, taxis_username, taxis_password,
     } = await req.json()
     if (!id) return json({ error: 'id is required' }, 400)
@@ -16,7 +17,7 @@ Deno.serve(async (req) => {
 
     const { data: existing } = await supabase
       .from('contacts')
-      .select('google_resource_name')
+      .select('google_contact_id')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .maybeSingle()
@@ -32,7 +33,9 @@ Deno.serve(async (req) => {
         notes: notes || null,
         vat: vat || null,
         address: address || null,
-        professional_status: professional_status || null,
+        job_title: job_title || null,
+        organization: organization || null,
+        website: website || null,
         father_name: father_name || null,
         mother_name: mother_name || null,
         birthdate: birthdate || null,
@@ -59,7 +62,13 @@ Deno.serve(async (req) => {
           phone: phone || null,
           phone2: phone2 || null,
           email: email || null,
-          resourceName: existing?.google_resource_name ?? null,
+          organization: organization || null,
+          job_title: job_title || null,
+          website: website || null,
+          birthdate: birthdate || null,
+          address: address || null,
+          notes: notes || null,
+          resourceName: existing?.google_contact_id ?? null,
         }),
       })
     } catch (e: any) {

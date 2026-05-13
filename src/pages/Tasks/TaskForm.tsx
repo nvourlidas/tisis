@@ -28,7 +28,7 @@ type Props = {
 };
 
 const emptyLegalAct = (): LegalActData => ({
-  protocol_number: '', creation_date: '', authority: '', gak: '', eka: '',
+  protocol_number: '', creation_date: '', authority: '', gak: '', eak: '',
   decision: { number: '', date: '', description: '' },
 });
 const emptyAppointment = (): AppointmentData => ({ start_datetime: '', end_datetime: '' });
@@ -39,7 +39,7 @@ function legalActFromData(d: LegalActData | null | undefined): LegalActData {
     creation_date: d?.creation_date ?? '',
     authority: d?.authority ?? '',
     gak: d?.gak ?? '',
-    eka: d?.eka ?? '',
+    eak: d?.eak ?? '',
     decision: {
       number: d?.decision?.number ?? '',
       date: d?.decision?.date ?? '',
@@ -59,7 +59,7 @@ export function buildExtraData(category: TaskCategory | '', legalAct: LegalActDa
     if (legalAct.creation_date) d.creation_date = legalAct.creation_date;
     if (legalAct.authority) d.authority = legalAct.authority;
     if (legalAct.gak) d.gak = legalAct.gak;
-    if (legalAct.eka) d.eka = legalAct.eka;
+    if (legalAct.eak) d.eak = legalAct.eak;
     const dec = legalAct.decision ?? {};
     if (dec.number || dec.date || dec.description) {
       d.decision = {};
@@ -69,7 +69,7 @@ export function buildExtraData(category: TaskCategory | '', legalAct: LegalActDa
     }
     return Object.keys(d).length ? d : null;
   }
-  if (category === 'appointment') {
+  if (category === 'appointment' || category === 'court') {
     const d: AppointmentData = {};
     if (appointment.start_datetime) d.start_datetime = appointment.start_datetime;
     if (appointment.end_datetime) d.end_datetime = appointment.end_datetime;
@@ -103,7 +103,7 @@ export default function TaskForm({ tenantId, initial, hideCaseField, saving, err
     initial?.category === 'legal_act' ? legalActFromData(initExtra as LegalActData) : emptyLegalAct()
   );
   const [appointment, setAppointment] = useState<AppointmentData>(
-    initial?.category === 'appointment' ? appointmentFromData(initExtra as AppointmentData) : emptyAppointment()
+    (initial?.category === 'appointment' || initial?.category === 'court') ? appointmentFromData(initExtra as AppointmentData) : emptyAppointment()
   );
 
   const [fee, setFee] = useState<string>(initial?.fee != null ? String(initial.fee) : '');
@@ -252,8 +252,8 @@ export default function TaskForm({ tenantId, initial, hideCaseField, saving, err
               <input className="input w-full text-sm" value={legalAct.gak ?? ''} onChange={setLA('gak')} />
             </div>
             <div>
-              <label className="block text-xs text-text-secondary mb-1">ΕΚΑ</label>
-              <input className="input w-full text-sm" value={legalAct.eka ?? ''} onChange={setLA('eka')} />
+              <label className="block text-xs text-text-secondary mb-1">ΕΑΚ</label>
+              <input className="input w-full text-sm" value={legalAct.eak ?? ''} onChange={setLA('eak')} />
             </div>
           </div>
           <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mt-2">Απόφαση</p>
@@ -274,10 +274,12 @@ export default function TaskForm({ tenantId, initial, hideCaseField, saving, err
         </div>
       )}
 
-      {/* Extra fields: Επαγγελματικά Ραντεβού */}
-      {category === 'appointment' && (
+      {/* Extra fields: Επαγγελματικά Ραντεβού / Δικαστήριο */}
+      {(category === 'appointment' || category === 'court') && (
         <div className="space-y-3 rounded-xl border border-border/10 p-4">
-          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Στοιχεία Ραντεβού</p>
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+            {category === 'court' ? 'Στοιχεία Δικαστηρίου' : 'Στοιχεία Ραντεβού'}
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-text-secondary mb-1">Έναρξη</label>

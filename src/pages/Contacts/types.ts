@@ -9,7 +9,10 @@ export type Contact = {
   notes: string | null;
   vat: string | null;
   address: string | null;
-  professional_status: string | null;
+  job_title: string | null;
+  organization: string | null;
+  website: string | null;
+  google_contact_id: string | null;
   father_name: string | null;
   mother_name: string | null;
   birthdate: string | null;
@@ -31,7 +34,9 @@ export type ContactFormData = {
   notes: string;
   vat: string;
   address: string;
-  professional_status: string;
+  job_title: string;
+  organization: string;
+  website: string;
   father_name: string;
   mother_name: string;
   birthdate: string;
