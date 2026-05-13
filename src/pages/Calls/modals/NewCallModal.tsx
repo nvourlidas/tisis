@@ -194,8 +194,8 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
     />
     {showTaskModal && (
       <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-        <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border/10">
+        <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border/10 sticky top-0 bg-secondary-background z-10">
             <h2 className="text-base font-semibold text-text-primary">Νέα Εργασία</h2>
             <button onClick={() => { setShowTaskModal(false); if (!pendingTask) set('create_task', false); }} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer">
               <X className="h-4 w-4" />

@@ -8,9 +8,12 @@ Deno.serve(async (req) => {
     const { tenantId, supabase } = auth
     const { id, ...fields } = await req.json()
     if (!id) return json({ error: 'id is required' }, 400)
+    const sanitized = Object.fromEntries(
+      Object.entries(fields).map(([k, v]) => [k, v === '' ? null : v])
+    )
     const { error } = await supabase
       .from('clients')
-      .update(fields)
+      .update(sanitized)
       .eq('id', id)
       .eq('tenant_id', tenantId)
     if (error) return json({ error: error.message }, 400)
