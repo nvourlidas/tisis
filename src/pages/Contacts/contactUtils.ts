@@ -84,7 +84,7 @@ export async function promoteContactToClient(contact: Contact): Promise<Client> 
       email: contact.email ?? '',
       vat: contact.vat ?? '',
       address: contact.address ?? '',
-      professional_status: contact.professional_status ?? '',
+      professional_status: contact.job_title ?? '',
       notes: contact.notes ?? '',
       father_name: contact.father_name ?? '',
       mother_name: contact.mother_name ?? '',

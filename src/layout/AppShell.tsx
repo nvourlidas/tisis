@@ -5,6 +5,7 @@ import { useAuth } from '../auth';
 import { NAV, type NavEntry } from '../_nav';
 import type { LucideIcon } from 'lucide-react';
 import { LogOut, Menu, ChevronDown, Sun, Moon, Crown, Zap } from 'lucide-react';
+import Logo from '../assets/Logo.png';
 import { useTheme, type ThemeMode } from '../lib/useTheme';
 
 type Tenant = { name: string };
@@ -74,7 +75,7 @@ export default function AppShell() {
               >
                 <Menu className="h-4 w-4" />
               </button>
-              <span className="text-sm font-bold text-text-primary">TISIS</span>
+              <span className="text-sm font-bold text-text-primary">Δικηγορική Εταιρεία Tisis</span>
               {tenant?.name && (
                 <div className="hidden sm:flex items-center gap-1.5">
                   <span className="text-border/40 text-sm">•</span>
@@ -115,8 +116,8 @@ function SidebarNav({ theme, onToggleTheme }: { theme: ThemeMode; onToggleTheme:
     <div className="flex h-full min-h-0 flex-col">
       <div className="px-4 py-4 shrink-0 border-b border-border/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-primary/15 border border-primary/20 flex items-center justify-center">
-            <Crown className="h-3.5 w-3.5 text-primary" />
+          <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center">
+            <img src={Logo} alt="TISIS" className="w-full h-full object-contain" />
           </div>
           <div className="min-w-0">
             <div className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Σύστημα</div>

@@ -16,6 +16,7 @@ type Props = {
   onClose: () => void;
   onCreated?: (callId: string) => void;
   initialPhone?: string;
+  initialCaseId?: string;
 };
 
 const empty: CallFormData = {
@@ -31,7 +32,7 @@ const empty: CallFormData = {
   task_due_date: '',
 };
 
-export default function NewCallModal({ open, onClose, onCreated, initialPhone }: Props) {
+export default function NewCallModal({ open, onClose, onCreated, initialPhone, initialCaseId }: Props) {
   const { profile } = useAuth();
   const tenantId = profile?.tenant_id ?? '';
 
@@ -41,7 +42,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showNewContactModal, setShowNewContactModal] = useState(false);
   const [pendingTask, setPendingTask] = useState<TaskFormValues | null>(null);
-  const [taskSaving, setTaskSaving] = useState(false);
+  const [taskSaving] = useState(false);
 
   // Contact search
   const [contactQuery, setContactQuery] = useState('');
@@ -53,8 +54,8 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
   // Case search
   const [showCaseSearch, setShowCaseSearch] = useState(false);
   const [caseQuery, setCaseQuery] = useState('');
-  const [caseOptions, setCaseOptions] = useState<{ id: string; code: string; title: string }[]>([]);
-  const [selectedCase, setSelectedCase] = useState<{ id: string; code: string; title: string } | null>(null);
+  const [caseOptions, setCaseOptions] = useState<{ id: string; code: string; title: string; client_name?: string }[]>([]);
+  const [selectedCase, setSelectedCase] = useState<{ id: string; code: string; title: string; client_name?: string } | null>(null);
   const [searchingCases, setSearchingCases] = useState(false);
 
   const contactInputRef = useRef<HTMLInputElement>(null);
@@ -63,7 +64,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
   useEffect(() => {
     if (open) {
       const phone = initialPhone ?? '';
-      setForm({ ...empty, phone });
+      setForm({ ...empty, phone, case_id: initialCaseId ?? '' });
       setContactQuery(phone);
       setSelectedContact(null);
       setContactResults([]);
@@ -78,7 +79,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
       setShowNewContactModal(false);
       setTimeout(() => contactInputRef.current?.focus(), 50);
     }
-  }, [open, initialPhone]);
+  }, [open, initialPhone, initialCaseId]);
 
   // Contact search debounce
   useEffect(() => {
@@ -150,7 +151,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
           title: pendingTask.title,
           description: pendingTask.description,
           due_date: pendingTask.due_date,
-          case_id: pendingTask.case_id || finalForm.case_id,
+          case_id: pendingTask.case_id || form.case_id,
           category: pendingTask.category || undefined,
           extra_data: pendingTask.extra_data,
           fee: pendingTask.fee,
@@ -339,14 +340,19 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
             />
           </div>
 
-          {/* Link to case */}
-          <div>
+          {/* Link to case — hidden when opened from a case detail */}
+          <div className={initialCaseId ? 'hidden' : ''}>
             <label className="block text-sm text-text-secondary mb-1">Υπόθεση</label>
             {selectedCase ? (
               <div className="flex items-center gap-2 rounded-xl border border-border/10 bg-white/3 px-4 py-2.5">
-                <span className="font-mono text-xs text-text-secondary">{selectedCase.code}</span>
-                <span className="text-sm text-text-primary flex-1 truncate">{selectedCase.title}</span>
-                <button type="button" onClick={clearCase} className="text-text-secondary hover:text-danger cursor-pointer">
+                <span className="font-mono text-xs text-text-secondary shrink-0">{selectedCase.code}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-text-primary truncate">{selectedCase.title}</div>
+                  {selectedCase.client_name && (
+                    <div className="text-xs text-text-secondary truncate">{selectedCase.client_name}</div>
+                  )}
+                </div>
+                <button type="button" onClick={clearCase} className="text-text-secondary hover:text-danger cursor-pointer shrink-0">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -367,7 +373,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
                       <input
                         className="input w-full pl-9!"
-                        placeholder="Αναζήτηση κωδικού ή τίτλου…"
+                        placeholder="Αναζήτηση κωδικού, τίτλου ή εντολέα…"
                         value={caseQuery}
                         onChange={(e) => setCaseQuery(e.target.value)}
                         autoFocus
@@ -384,7 +390,12 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone }:
                             className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 cursor-pointer transition-colors text-left"
                           >
                             <span className="font-mono text-xs text-text-secondary shrink-0">{c.code}</span>
-                            <span className="text-sm text-text-primary truncate">{c.title}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm text-text-primary truncate">{c.title}</div>
+                              {c.client_name && (
+                                <div className="text-xs text-text-secondary truncate">{c.client_name}</div>
+                              )}
+                            </div>
                           </button>
                         ))}
                       </div>

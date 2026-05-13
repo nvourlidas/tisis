@@ -3,7 +3,7 @@ import { Plus, Check, RotateCcw, X, AlertCircle, ChevronLeft, ChevronRight, Penc
 import { fetchCaseTasks, completeTask, reopenTask } from '../caseUtils';
 import { updateTask, TASK_CATEGORIES, type TaskCategory, type LegalActData, type AppointmentData, type TaskExpense } from '../../Tasks/taskUtils';
 import { supabase } from '../../../lib/supabase';
-import TaskForm, { type TaskFormValues, taskToFormValues } from '../../Tasks/TaskForm';
+import TaskForm, { type TaskFormValues } from '../../Tasks/TaskForm';
 import type { CaseTask } from '../types';
 
 const MONTH_NAMES = [
@@ -30,6 +30,7 @@ const CATEGORY_COLORS: Record<TaskCategory, string> = {
   extrajudicial:'bg-purple-500/15 text-purple-500',
   appointment:  'bg-teal-500/15 text-teal-500',
   file_work:    'bg-amber-500/15 text-amber-500',
+  court:        'bg-red-500/15 text-red-500',
 };
 
 type Props = { caseId: string; tenantId?: string };
@@ -557,7 +558,7 @@ function ExtraDataSummary({ task }: { task: CaseTask }) {
       const parts = [
         d.authority && `Αρχή: ${d.authority}`,
         d.gak && `ΓΑΚ: ${d.gak}`,
-        d.eka && `ΕΚΑ: ${d.eka}`,
+        d.eak && `ΕΑΚ: ${d.eak}`,
         d.protocol_number && `Αρ. Πρωτ.: ${d.protocol_number}`,
       ].filter(Boolean);
       if (parts.length) lines.push(<span key="legal">{parts.join(' · ')}</span>);

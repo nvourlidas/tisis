@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend,
+  Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { useAuth } from '../../auth';
 import { fetchAllTasks, type Task } from '../Tasks/taskUtils';

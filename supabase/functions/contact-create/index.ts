@@ -7,7 +7,8 @@ Deno.serve(async (req) => {
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
     const {
-      name, phone, phone2, email, role, notes, vat, address, professional_status,
+      name, phone, phone2, email, role, notes, vat, address,
+      job_title, organization, website,
       father_name, mother_name, birthdate, amka, iban, at, taxis_username, taxis_password,
     } = await req.json()
     if (!name?.trim()) return json({ error: 'Name is required' }, 400)
@@ -24,7 +25,9 @@ Deno.serve(async (req) => {
         notes: notes || null,
         vat: vat || null,
         address: address || null,
-        professional_status: professional_status || null,
+        job_title: job_title || null,
+        organization: organization || null,
+        website: website || null,
         father_name: father_name || null,
         mother_name: mother_name || null,
         birthdate: birthdate || null,
@@ -52,6 +55,12 @@ Deno.serve(async (req) => {
           phone: data.phone,
           phone2: data.phone2,
           email: data.email,
+          organization: data.organization,
+          job_title: data.job_title,
+          website: data.website,
+          birthdate: data.birthdate,
+          address: data.address,
+          notes: data.notes,
         }),
       })
     } catch (e: any) {

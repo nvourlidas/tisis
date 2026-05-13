@@ -2,12 +2,12 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, RotateCcw, AlertCircle,
-  X, ChevronLeft, ChevronRight, Pencil, CheckSquare,
+  X, ChevronLeft, ChevronRight, Pencil,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import {
   fetchAllTasks, completeTask, reopenTask, createTask, updateTask, groupTasks,
-  TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData, type TaskExpense,
+  TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData,
 } from './taskUtils';
 import TaskForm, { type TaskFormValues, taskToFormValues } from './TaskForm';
 
@@ -35,6 +35,7 @@ const CATEGORY_COLORS: Record<TaskCategory, string> = {
   extrajudicial: 'bg-purple-500/15 text-purple-500',
   appointment: 'bg-teal-500/15 text-teal-500',
   file_work: 'bg-amber-500/15 text-amber-500',
+  court: 'bg-red-500/15 text-red-500',
 };
 
 export default function Tasks() {
@@ -56,7 +57,7 @@ export default function Tasks() {
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
   const [authorityFilter, setAuthorityFilter] = useState('');
   const [gakFilter, setGakFilter] = useState('');
-  const [ekaFilter, setEkaFilter] = useState('');
+  const [eakFilter, setEakFilter] = useState('');
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
@@ -167,11 +168,11 @@ export default function Tasks() {
         const d = t.extra_data as LegalActData;
         if (authorityFilter && !d.authority?.toLowerCase().includes(authorityFilter.toLowerCase())) return false;
         if (gakFilter && !d.gak?.toLowerCase().includes(gakFilter.toLowerCase())) return false;
-        if (ekaFilter && !d.eka?.toLowerCase().includes(ekaFilter.toLowerCase())) return false;
+        if (eakFilter && !d.eak?.toLowerCase().includes(eakFilter.toLowerCase())) return false;
       }
       return true;
     });
-  }, [tasks, categoryFilter, authorityFilter, gakFilter, ekaFilter]);
+  }, [tasks, categoryFilter, authorityFilter, gakFilter, eakFilter]);
 
   const tasksByDay = useMemo(() => {
     const map = new Map<string, Task[]>();
@@ -273,7 +274,7 @@ export default function Tasks() {
       {/* Category filter */}
       <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-1.5">
         <button
-          onClick={() => { setCategoryFilter(null); setAuthorityFilter(''); setGakFilter(''); setEkaFilter(''); }}
+          onClick={() => { setCategoryFilter(null); setAuthorityFilter(''); setGakFilter(''); setEakFilter(''); }}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${!categoryFilter ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
         >
           Όλες
@@ -281,7 +282,7 @@ export default function Tasks() {
         {(Object.keys(TASK_CATEGORIES) as TaskCategory[]).map(cat => (
           <button
             key={cat}
-            onClick={() => { setCategoryFilter(c => c === cat ? null : cat); setAuthorityFilter(''); setGakFilter(''); setEkaFilter(''); }}
+            onClick={() => { setCategoryFilter(c => c === cat ? null : cat); setAuthorityFilter(''); setGakFilter(''); setEakFilter(''); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${categoryFilter === cat ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
           >
             {TASK_CATEGORIES[cat]}
@@ -300,8 +301,8 @@ export default function Tasks() {
             <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={gakFilter} onChange={e => setGakFilter(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs text-text-secondary mb-1">ΕΚΑ</label>
-            <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={ekaFilter} onChange={e => setEkaFilter(e.target.value)} />
+            <label className="block text-xs text-text-secondary mb-1">ΕΑΚ</label>
+            <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={eakFilter} onChange={e => setEakFilter(e.target.value)} />
           </div>
         </div>
       )}
@@ -609,7 +610,7 @@ function ExtraDataSummary({ task }: { task: Task }) {
       const parts = [
         d.authority && `Αρχή: ${d.authority}`,
         d.gak && `ΓΑΚ: ${d.gak}`,
-        d.eka && `ΕΚΑ: ${d.eka}`,
+        d.eak && `ΕΑΚ: ${d.eak}`,
         d.protocol_number && `Αρ. Πρωτ.: ${d.protocol_number}`,
       ].filter(Boolean);
       if (parts.length) lines.push(<span key="legal">{parts.join(' · ')}</span>);

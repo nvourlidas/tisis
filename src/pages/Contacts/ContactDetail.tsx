@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Mail, Tag, FileText, MapPin, Pencil, Check, X,
   UserCheck, ExternalLink, Trash2, Users, CalendarDays, ShieldCheck,
-  CreditCard, KeyRound, RotateCcw, Briefcase,
+  CreditCard, KeyRound, RotateCcw, Briefcase, Building2, Globe,
 } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
@@ -40,7 +40,9 @@ const FIELD_META: Record<string, FieldMeta> = {
   email:               { icon: <Mail className="h-4 w-4" />,         color: 'text-purple-500', bg: 'bg-purple-500/10' },
   address:             { icon: <MapPin className="h-4 w-4" />,       color: 'text-green-500',  bg: 'bg-green-500/10' },
   vat:                 { icon: <FileText className="h-4 w-4" />,     color: 'text-orange-500', bg: 'bg-orange-500/10' },
-  professional_status: { icon: <Briefcase className="h-4 w-4" />,   color: 'text-teal-500',   bg: 'bg-teal-500/10' },
+  job_title:           { icon: <Briefcase className="h-4 w-4" />,   color: 'text-teal-500',   bg: 'bg-teal-500/10' },
+  organization:        { icon: <Building2 className="h-4 w-4" />,   color: 'text-cyan-500',   bg: 'bg-cyan-500/10' },
+  website:             { icon: <Globe className="h-4 w-4" />,        color: 'text-sky-500',    bg: 'bg-sky-500/10' },
   father_name:         { icon: <Users className="h-4 w-4" />,        color: 'text-slate-400',  bg: 'bg-slate-400/10' },
   mother_name:         { icon: <Users className="h-4 w-4" />,        color: 'text-slate-400',  bg: 'bg-slate-400/10' },
   birthdate:           { icon: <CalendarDays className="h-4 w-4" />, color: 'text-teal-500',   bg: 'bg-teal-500/10' },
@@ -96,7 +98,7 @@ export default function ContactDetail() {
         name: form.name, phone: form.phone ?? '', phone2: form.phone2 ?? '',
         email: form.email ?? '', role: form.role ?? '', notes: form.notes ?? '',
         vat: form.vat ?? '', address: form.address ?? '',
-        professional_status: form.professional_status ?? '',
+        job_title: form.job_title ?? '', organization: form.organization ?? '', website: form.website ?? '',
         father_name: form.father_name ?? '', mother_name: form.mother_name ?? '',
         birthdate: form.birthdate ?? '', amka: form.amka ?? '', iban: form.iban ?? '',
         at: form.at ?? '', taxis_username: form.taxis_username ?? '', taxis_password: form.taxis_password ?? '',
@@ -290,7 +292,9 @@ export default function ContactDetail() {
               ['phone2', 'Τηλέφωνο 2'],
               ['email', 'Email'],
               ['vat', 'ΑΦΜ'],
-              ['professional_status', 'Επαγγελματική Ιδιότητα'],
+              ['job_title', 'Επαγγελματική Ιδιότητα'],
+              ['organization', 'Οργανισμός / Εταιρεία'],
+              ['website', 'Ιστοσελίδα'],
               ['address', 'Διεύθυνση'],
               ['father_name', 'Όνομα πατρός'],
               ['mother_name', 'Όνομα μητρός'],
@@ -343,16 +347,18 @@ export default function ContactDetail() {
                     }
                   />
                 ) : (
-                  <InfoCard {...FIELD_META.taxis_username} label="Ρόλος" value={<span className="text-sm text-text-primary">{contact.role}</span>} />
+                  <InfoCard icon={FIELD_META.taxis_username.icon} iconColor={FIELD_META.taxis_username.color} iconBg={FIELD_META.taxis_username.bg} label="Ρόλος" value={<span className="text-sm text-text-primary">{contact.role}</span>} />
                 );
               })()}
               {([
                 ['phone', 'Τηλέφωνο', contact.phone],
                 ['phone2', 'Τηλέφωνο 2', contact.phone2],
                 ['email', 'Email', contact.email],
+                ['job_title', 'Επαγγελματική Ιδιότητα', contact.job_title],
+                ['organization', 'Οργανισμός / Εταιρεία', contact.organization],
+                ['website', 'Ιστοσελίδα', contact.website],
                 ['address', 'Διεύθυνση', contact.address],
                 ['vat', 'ΑΦΜ', contact.vat],
-                ['professional_status', 'Επαγγελματική Ιδιότητα', contact.professional_status],
                 ['father_name', 'Όνομα πατρός', contact.father_name],
                 ['mother_name', 'Όνομα μητρός', contact.mother_name],
                 ['birthdate', 'Ημ/νία γέννησης', contact.birthdate ? formatDate(contact.birthdate) : null],

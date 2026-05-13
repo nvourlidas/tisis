@@ -44,16 +44,53 @@ export async function searchContactsForCall(
 export async function searchCasesForCall(
   tenantId: string,
   query: string,
-): Promise<{ id: string; code: string; title: string }[]> {
-  const { data } = await supabase
+): Promise<{ id: string; code: string; title: string; client_name?: string }[]> {
+  // Search by case code/title
+  const { data: byCase } = await supabase
     .from('cases')
-    .select('id, code, title')
+    .select('id, code, title, clients(name)')
     .eq('tenant_id', tenantId)
     .or(`code.ilike.%${query}%,title.ilike.%${query}%`)
     .neq('status', 'closed')
     .order('created_at', { ascending: false })
     .limit(10);
-  return data ?? [];
+
+  // Search by client name
+  const { data: clientMatches } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .ilike('name', `%${query}%`)
+    .limit(10);
+
+  let byClient: typeof byCase = [];
+  if (clientMatches && clientMatches.length > 0) {
+    const clientIds = clientMatches.map((c: any) => c.id);
+    const { data } = await supabase
+      .from('cases')
+      .select('id, code, title, clients(name)')
+      .eq('tenant_id', tenantId)
+      .in('client_id', clientIds)
+      .neq('status', 'closed')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    byClient = data ?? [];
+  }
+
+  // Merge and deduplicate
+  const seen = new Set<string>();
+  const merged: { id: string; code: string; title: string; client_name?: string }[] = [];
+  for (const row of [...(byCase ?? []), ...(byClient ?? [])]) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    merged.push({
+      id: row.id,
+      code: row.code,
+      title: row.title,
+      client_name: (row as any).clients?.name ?? undefined,
+    });
+  }
+  return merged.slice(0, 10);
 }
 
 export async function createCall(_tenantId: string, form: CallFormData): Promise<string> {
