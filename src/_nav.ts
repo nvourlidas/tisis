@@ -49,11 +49,11 @@ export type NavEntry =
 export const NAV: NavEntry[] = [
   { type: 'section', title: 'Main' },
   { type: 'item', label: 'Πίνακας Ελέγχου', to: '/', end: true, icon: LayoutDashboard },
+  { type: 'item', label: 'Ημερολόγιο', to: '/tasks', icon: CheckSquare },
   { type: 'item', label: 'Υποθέσεις', to: '/cases', icon: Briefcase },
   { type: 'item', label: 'Εντολείς', to: '/clients', icon: Users },
   { type: 'item', label: 'Επαφές', to: '/contacts', icon: BookUser },
   { type: 'item', label: 'Κλήσεις', to: '/calls', icon: Phone },
-  { type: 'item', label: 'Εργασίες', to: '/tasks', icon: CheckSquare },
   { type: 'item', label: 'Οικονομικά', to: '/finances', icon: TrendingUp },
 
   { type: 'section', title: 'Ρυθμίσεις' },

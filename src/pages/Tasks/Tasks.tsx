@@ -2,9 +2,10 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, RotateCcw, AlertCircle,
-  X, ChevronLeft, ChevronRight, Pencil,
+  X, ChevronLeft, ChevronRight, Pencil, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
+import { supabase } from '../../lib/supabase';
 import {
   fetchAllTasks, completeTask, reopenTask, createTask, updateTask, groupTasks,
   TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData,
@@ -52,6 +53,8 @@ export default function Tasks() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   // Filters
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
@@ -131,6 +134,22 @@ export default function Tasks() {
       setSaveError(err?.message ?? 'Αποτυχία αποθήκευσης.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('google-calendar-import', { body: {} });
+      if (error) throw error;
+      setSyncMsg(data.imported > 0 ? `Εισήχθησαν ${data.imported} εργασίες.` : 'Δεν υπάρχουν νέες εργασίες.');
+      if (data.imported > 0) load();
+    } catch (e: any) {
+      setSyncMsg(e?.message ?? 'Αποτυχία συγχρονισμού.');
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 4000);
     }
   };
 
@@ -235,13 +254,26 @@ export default function Tasks() {
             </p>
           )}
         </div>
-        <button
-          onClick={() => { setShowCreate(true); setEditingTask(null); }}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
-        >
-          <Plus className="h-4 w-4" />
-          Νέα Εργασία
-        </button>
+        <div className="flex items-center gap-2">
+          {syncMsg && (
+            <span className="text-xs text-text-secondary animate-fade-in">{syncMsg}</span>
+          )}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border/20 bg-white/4 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            Google Calendar
+          </button>
+          <button
+            onClick={() => { setShowCreate(true); setEditingTask(null); }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            Νέα Εργασία
+          </button>
+        </div>
       </div>
 
       {showCreate && (
