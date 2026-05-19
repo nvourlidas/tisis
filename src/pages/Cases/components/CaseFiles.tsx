@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Upload, Trash2, ExternalLink, FileText, FolderOpen, Loader2 } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, FileText, FolderOpen, Loader2, RefreshCw } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 interface DriveFile {
@@ -164,6 +164,14 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={loadFiles}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors disabled:opacity-50 cursor-pointer"
+            title="Ανανέωση"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
           <input ref={inputRef} type="file" className="hidden" onChange={handleUpload} />
           <button
             onClick={() => inputRef.current?.click()}
