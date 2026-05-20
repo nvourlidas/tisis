@@ -2,14 +2,17 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, RotateCcw, AlertCircle,
-  X, ChevronLeft, ChevronRight, Pencil, RefreshCw,
+  X, ChevronLeft, ChevronRight, Pencil, RefreshCw, Link2, Search, Phone, Users,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { supabase } from '../../lib/supabase';
 import {
-  fetchAllTasks, completeTask, reopenTask, createTask, updateTask, groupTasks,
+  fetchTasksForMonth, fetchTaskCounts, completeTask, reopenTask, createTask, updateTask,
+  searchFullTasks,
   TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData,
 } from './taskUtils';
+import { fetchCallsForMonth } from '../Calls/callUtils';
+import type { Call } from '../Calls/types';
 import TaskForm, { type TaskFormValues, taskToFormValues } from './TaskForm';
 
 const MONTH_NAMES = [
@@ -31,8 +34,38 @@ function weekStart(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+function taskDueColor(dueDate: string | null | undefined, todayStr: string, status: string) {
+  if (status === 'done' || !dueDate) return null;
+  const diff = Math.round((new Date(dueDate + 'T00:00:00').getTime() - new Date(todayStr + 'T00:00:00').getTime()) / 86400000);
+  if (diff <= 0) return 'red';
+  if (diff <= 7) return 'purple';
+  if (diff <= 20) return 'orange';
+  if (diff <= 30) return 'yellow';
+  return null;
+}
+
+const DUE_COLOR_CHIP: Record<string, string> = {
+  red: 'bg-red-500/15 text-red-500',
+  purple: 'bg-purple-500/15 text-purple-500',
+  orange: 'bg-orange-500/15 text-orange-500',
+  yellow: 'bg-yellow-500/15 text-yellow-500',
+};
+const DUE_COLOR_CARD: Record<string, string> = {
+  red: 'border-red-500/20 bg-red-500/5',
+  purple: 'border-purple-500/20 bg-purple-500/5',
+  orange: 'border-orange-500/20 bg-orange-500/5',
+  yellow: 'border-yellow-500/20 bg-yellow-500/5',
+};
+const DUE_COLOR_BTN: Record<string, string> = {
+  red: 'border-red-400 hover:bg-red-400/20',
+  purple: 'border-purple-400 hover:bg-purple-400/20',
+  orange: 'border-orange-400 hover:bg-orange-400/20',
+  yellow: 'border-yellow-400 hover:bg-yellow-400/20',
+};
+
 const CATEGORY_COLORS: Record<TaskCategory, string> = {
   legal_act: 'bg-blue-500/15 text-blue-500',
+  lawsuit: 'bg-indigo-500/15 text-indigo-500',
   extrajudicial: 'bg-purple-500/15 text-purple-500',
   appointment: 'bg-teal-500/15 text-teal-500',
   file_work: 'bg-amber-500/15 text-amber-500',
@@ -45,6 +78,9 @@ export default function Tasks() {
   const tenantId = profile?.tenant_id ?? '';
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [calls, setCalls] = useState<Call[]>([]);
+  const [noDueDateTasksRaw, setNoDueDateTasksRaw] = useState<Task[]>([]);
+  const [counts, setCounts] = useState<{ open: number; done: number }>({ open: 0, done: 0 });
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -56,7 +92,22 @@ export default function Tasks() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Task[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!searchQuery.trim() || !tenantId) { setSearchResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try { setSearchResults(await searchFullTasks(tenantId, searchQuery.trim())); }
+      finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery, tenantId]);
+
   // Filters
+  const [showOnlyCalls, setShowOnlyCalls] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
   const [authorityFilter, setAuthorityFilter] = useState('');
   const [gakFilter, setGakFilter] = useState('');
@@ -71,20 +122,29 @@ export default function Tasks() {
   const [selectedDay, setSelectedDay] = useState<string | null>(todayStr);
   const [anchor, setAnchor] = useState<string>(todayStr);
 
-  const load = () => {
+  const load = (y: number, m: number) => {
     if (!tenantId) return;
     setLoading(true);
-    fetchAllTasks(tenantId).then(setTasks).finally(() => setLoading(false));
+    Promise.all([
+      fetchTasksForMonth(tenantId, y, m),
+      fetchTaskCounts(tenantId),
+      fetchCallsForMonth(tenantId, y, m),
+    ]).then(([{ tasks: t, noDueDateTasks: nd }, c, cl]) => {
+      setTasks(t);
+      setNoDueDateTasksRaw(nd);
+      setCounts(c);
+      setCalls(cl);
+    }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [tenantId]);
+  useEffect(() => { load(year, month); }, [tenantId, year, month]);
 
   const toggle = async (task: Task) => {
     setToggling(task.id);
     try {
       if (task.status === 'open') await completeTask(task.id);
       else await reopenTask(task.id);
-      load();
+      load(year, month);
     } finally {
       setToggling(null);
     }
@@ -103,9 +163,10 @@ export default function Tasks() {
         extra_data: values.extra_data,
         fee: values.fee,
         expenses: values.expenses,
+        linked_task_ids: values.linked_task_ids,
       });
       setShowCreate(false);
-      load();
+      load(year, month);
     } catch (err: any) {
       setCreateError(err?.message ?? 'Αποτυχία δημιουργίας εργασίας.');
     } finally {
@@ -127,9 +188,10 @@ export default function Tasks() {
         extra_data: values.extra_data,
         fee: values.fee,
         expenses: values.expenses,
+        linked_task_ids: values.linked_task_ids,
       });
       setEditingTask(null);
-      load();
+      load(year, month);
     } catch (err: any) {
       setSaveError(err?.message ?? 'Αποτυχία αποθήκευσης.');
     } finally {
@@ -143,8 +205,8 @@ export default function Tasks() {
     try {
       const { data, error } = await supabase.functions.invoke('google-calendar-import', { body: {} });
       if (error) throw error;
-      setSyncMsg(data.imported > 0 ? `Εισήχθησαν ${data.imported} εργασίες.` : 'Δεν υπάρχουν νέες εργασίες.');
-      if (data.imported > 0) load();
+      setSyncMsg(data.imported > 0 ? `Συγχρονίστηκαν ${data.imported} εργασίες.` : 'Δεν υπάρχουν εργασίες για συγχρονισμό.');
+      if (data.imported > 0) load(year, month);
     } catch (e: any) {
       setSyncMsg(e?.message ?? 'Αποτυχία συγχρονισμού.');
     } finally {
@@ -183,7 +245,7 @@ export default function Tasks() {
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
       if (categoryFilter && t.category !== categoryFilter) return false;
-      if (categoryFilter === 'legal_act' && t.extra_data) {
+      if ((categoryFilter === 'legal_act' || categoryFilter === 'lawsuit') && t.extra_data) {
         const d = t.extra_data as LegalActData;
         if (authorityFilter && !d.authority?.toLowerCase().includes(authorityFilter.toLowerCase())) return false;
         if (gakFilter && !d.gak?.toLowerCase().includes(gakFilter.toLowerCase())) return false;
@@ -203,7 +265,29 @@ export default function Tasks() {
     return map;
   }, [filteredTasks]);
 
-  const noDueDateTasks = useMemo(() => filteredTasks.filter(t => !t.due_date && t.status === 'open'), [filteredTasks]);
+  const callsByDay = useMemo(() => {
+    const map = new Map<string, Call[]>();
+    for (const c of calls) {
+      const day = c.created_at.slice(0, 10);
+      if (!map.has(day)) map.set(day, []);
+      map.get(day)!.push(c);
+    }
+    return map;
+  }, [calls]);
+
+  const noDueDateTasks = useMemo(() => {
+    const fromFetched = noDueDateTasksRaw.filter(t => {
+      if (categoryFilter && t.category !== categoryFilter) return false;
+      if ((categoryFilter === 'legal_act' || categoryFilter === 'lawsuit') && t.extra_data) {
+        const d = t.extra_data as LegalActData;
+        if (authorityFilter && !d.authority?.toLowerCase().includes(authorityFilter.toLowerCase())) return false;
+        if (gakFilter && !d.gak?.toLowerCase().includes(gakFilter.toLowerCase())) return false;
+        if (eakFilter && !d.eak?.toLowerCase().includes(eakFilter.toLowerCase())) return false;
+      }
+      return true;
+    });
+    return fromFetched;
+  }, [noDueDateTasksRaw, categoryFilter, authorityFilter, gakFilter, eakFilter]);
 
   const firstDay = new Date(year, month, 1);
   const startDow = (firstDay.getDay() + 6) % 7;
@@ -239,22 +323,36 @@ export default function Tasks() {
     return new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }, [view, month, year, weekDays, anchor]);
 
-  const groups = groupTasks(filteredTasks);
-  const openCount = groups.overdue.length + groups.today.length + groups.upcoming.length + groups.noDueDate.length;
+  const openCount = counts.open;
 
   return (
     <div className="p-6 space-y-5">
       {/* Header */}
       <div className="animate-fade-in-up flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Εργασίες</h1>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Ημερολόγιο</h1>
           {!loading && (
             <p className="text-sm text-text-secondary mt-0.5">
-              {openCount} ανοιχτές · {groups.done.length} ολοκληρωμένες
+              {openCount} ανοιχτές · {counts.done} ολοκληρωμένες
             </p>
           )}
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 h-9 w-56 rounded-xl border border-border/10 bg-secondary-background px-3">
+            <Search className="h-4 w-4 text-text-secondary shrink-0" />
+            <input
+              type="text"
+              placeholder="Αναζήτηση εργασιών…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-secondary outline-none min-w-0"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="p-0.5 rounded hover:bg-white/10 text-text-secondary cursor-pointer shrink-0">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           {syncMsg && (
             <span className="text-xs text-text-secondary animate-fade-in">{syncMsg}</span>
           )}
@@ -306,40 +404,77 @@ export default function Tasks() {
       {/* Category filter */}
       <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-1.5">
         <button
-          onClick={() => { setCategoryFilter(null); setAuthorityFilter(''); setGakFilter(''); setEakFilter(''); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${!categoryFilter ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
+          onClick={() => { setShowOnlyCalls(false); setCategoryFilter(null); setAuthorityFilter(''); setGakFilter(''); setEakFilter(''); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${!categoryFilter && !showOnlyCalls ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
         >
-          Όλες
+          Όλα
         </button>
         {(Object.keys(TASK_CATEGORIES) as TaskCategory[]).map(cat => (
           <button
             key={cat}
-            onClick={() => { setCategoryFilter(c => c === cat ? null : cat); setAuthorityFilter(''); setGakFilter(''); setEakFilter(''); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${categoryFilter === cat ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
+            onClick={() => { setShowOnlyCalls(false); setCategoryFilter(c => c === cat ? null : cat); setAuthorityFilter(''); setGakFilter(''); setEakFilter(''); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${!showOnlyCalls && categoryFilter === cat ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
           >
             {TASK_CATEGORIES[cat]}
           </button>
         ))}
+        <button
+          onClick={() => { setShowOnlyCalls(v => !v); setCategoryFilter(null); setAuthorityFilter(''); setGakFilter(''); setEakFilter(''); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${showOnlyCalls ? 'bg-teal-500/15 text-teal-500' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'}`}
+        >
+          <Phone className="h-3 w-3" />
+          Γεγονότα
+        </button>
       </div>
 
-      {categoryFilter === 'legal_act' && (
+      {(categoryFilter === 'legal_act' || categoryFilter === 'lawsuit') && (
         <div className="animate-fade-in grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs text-text-secondary mb-1">Αρμόδια Αρχή</label>
+            <label className="block text-xs text-text-secondary mb-1">{categoryFilter === 'lawsuit' ? 'Αρμόδιο Δικαστήριο' : 'Αρμόδια Αρχή'}</label>
             <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={authorityFilter} onChange={e => setAuthorityFilter(e.target.value)} />
           </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">ΓΑΚ</label>
-            <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={gakFilter} onChange={e => setGakFilter(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">ΕΑΚ</label>
-            <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={eakFilter} onChange={e => setEakFilter(e.target.value)} />
-          </div>
+          {categoryFilter === 'lawsuit' && (<>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">ΓΑΚ</label>
+              <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={gakFilter} onChange={e => setGakFilter(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">ΕΑΚ</label>
+              <input className="input w-full text-sm rounded-xl" placeholder="Φίλτρο…" value={eakFilter} onChange={e => setEakFilter(e.target.value)} />
+            </div>
+          </>)}
         </div>
       )}
 
-      {loading ? (
+      {searchQuery.trim() ? (
+        <div className="animate-fade-in-up stagger-2 space-y-2">
+          {searching ? (
+            <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
+              <RotateCcw className="h-4 w-4 animate-spin" />
+              Αναζήτηση…
+            </div>
+          ) : (() => {
+            const filtered = searchResults.filter(t => {
+              if (categoryFilter && t.category !== categoryFilter) return false;
+              if ((categoryFilter === 'legal_act' || categoryFilter === 'lawsuit') && t.extra_data) {
+                const d = t.extra_data as LegalActData;
+                if (authorityFilter && !d.authority?.toLowerCase().includes(authorityFilter.toLowerCase())) return false;
+                if (gakFilter && !d.gak?.toLowerCase().includes(gakFilter.toLowerCase())) return false;
+                if (eakFilter && !d.eak?.toLowerCase().includes(eakFilter.toLowerCase())) return false;
+              }
+              return true;
+            });
+            return filtered.length === 0 ? (
+              <p className="text-sm text-text-secondary py-8 text-center">Δεν βρέθηκαν εργασίες.</p>
+            ) : (
+              filtered.map(task => (
+                <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
+                  onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+              ))
+            );
+          })()}
+        </div>
+      ) : loading ? (
         <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
           <RotateCcw className="h-4 w-4 animate-spin" />
           Φόρτωση εργασιών…
@@ -349,7 +484,30 @@ export default function Tasks() {
           <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 className="text-sm font-semibold text-text-primary">{headerTitle}</h2>
+              {view === 'month' ? (
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={month}
+                    onChange={e => { setMonth(Number(e.target.value)); setSelectedDay(null); }}
+                    className="bg-transparent text-sm font-semibold text-text-primary border-none outline-none cursor-pointer hover:text-primary transition-colors"
+                  >
+                    {MONTH_NAMES.map((name, i) => (
+                      <option key={i} value={i} className="bg-secondary-background text-text-primary">{name}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={year}
+                    onChange={e => { setYear(Number(e.target.value)); setSelectedDay(null); }}
+                    className="bg-transparent text-sm font-semibold text-text-primary border-none outline-none cursor-pointer hover:text-primary transition-colors"
+                  >
+                    {Array.from({ length: 41 }, (_, i) => todayDate.getFullYear() - 20 + i).map(y => (
+                      <option key={y} value={y} className="bg-secondary-background text-text-primary">{y}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <h2 className="text-sm font-semibold text-text-primary">{headerTitle}</h2>
+              )}
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex rounded-xl border border-border/15 overflow-hidden text-xs">
                   {(['month', 'week', 'day'] as CalendarView[]).map(v => (
@@ -377,6 +535,8 @@ export default function Tasks() {
                   if (!day) return <div key={`empty-${i}`} />;
                   const ds = dayStr(day);
                   const dayTasks = tasksByDay.get(ds) ?? [];
+                  const dayCalls = callsByDay.get(ds) ?? [];
+                  const total = dayTasks.length + dayCalls.length;
                   const isToday = ds === todayStr;
                   const isSelected = ds === selectedDay;
                   return (
@@ -387,19 +547,25 @@ export default function Tasks() {
                       <span className={['text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0',
                         isToday ? 'bg-primary text-white' : 'text-text-secondary'].join(' ')}>{day}</span>
                       <div className="flex flex-col gap-0.5 overflow-hidden w-full">
-                        {dayTasks.slice(0, 3).map(task => {
-                          const overdue = task.status === 'open' && ds < todayStr;
+                        {!showOnlyCalls && dayTasks.slice(0, 2).map(task => {
                           const done = task.status === 'done';
+                          const color = taskDueColor(task.due_date, todayStr, task.status);
                           return (
                             <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full',
-                              done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
-                              overdue ? 'bg-orange-500/15 text-orange-400' :
+                              done ? 'bg-green-500/10 text-green-400 opacity-60' :
+                              color ? DUE_COLOR_CHIP[color] :
                               task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
                               {task.title}
                             </span>
                           );
                         })}
-                        {dayTasks.length > 3 && <span className="text-xs text-text-secondary px-1">+{dayTasks.length - 3} ακόμα</span>}
+                        {dayCalls.slice(0, showOnlyCalls ? 2 : (dayTasks.length >= 2 ? 0 : 2 - dayTasks.length)).map(call => (
+                          <span key={call.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full',
+                            call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
+                            {call.caller_name ?? call.phone ?? 'Γεγονός'}
+                          </span>
+                        ))}
+                        {(showOnlyCalls ? dayCalls.length : total) > 2 && <span className="text-xs text-text-secondary px-1">+{(showOnlyCalls ? dayCalls.length : total) - 2} ακόμα</span>}
                       </div>
                     </button>
                   );
@@ -415,13 +581,16 @@ export default function Tasks() {
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  {selectedTasks.length === 0 ? (
-                    <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                  {(showOnlyCalls ? [] : selectedTasks).length === 0 && (callsByDay.get(selectedDay!) ?? []).length === 0 ? (
+                    <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
                   ) : (
                     <div className="space-y-2">
-                      {selectedTasks.map(task => (
+                      {!showOnlyCalls && selectedTasks.map(task => (
                         <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
                           onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                      ))}
+                      {(callsByDay.get(selectedDay!) ?? []).map(call => (
+                        <CallRow key={call.id} call={call} onNavigate={navigate} />
                       ))}
                     </div>
                   )}
@@ -435,6 +604,7 @@ export default function Tasks() {
                 {weekDays.map(ds => {
                   const d = new Date(ds + 'T00:00:00');
                   const dayTasks = tasksByDay.get(ds) ?? [];
+                  const dayCalls = callsByDay.get(ds) ?? [];
                   const isToday = ds === todayStr;
                   const isSelected = ds === anchor;
                   return (
@@ -448,18 +618,24 @@ export default function Tasks() {
                           isToday ? 'bg-primary text-white' : 'text-text-primary'].join(' ')}>{d.getDate()}</span>
                       </div>
                       <div className="flex flex-col gap-0.5 overflow-hidden">
-                        {dayTasks.map(task => {
-                          const overdue = task.status === 'open' && ds < todayStr;
+                        {!showOnlyCalls && dayTasks.map(task => {
                           const done = task.status === 'done';
+                          const color = taskDueColor(task.due_date, todayStr, task.status);
                           return (
                             <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block',
-                              done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
-                              overdue ? 'bg-orange-500/15 text-orange-400' :
+                              done ? 'bg-green-500/10 text-green-400 opacity-60' :
+                              color ? DUE_COLOR_CHIP[color] :
                               task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
                               {task.title}
                             </span>
                           );
                         })}
+                        {dayCalls.map(call => (
+                          <span key={call.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block',
+                            call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
+                            {call.caller_name ?? call.phone ?? 'Γεγονός'}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   );
@@ -469,13 +645,16 @@ export default function Tasks() {
                 <h3 className="text-sm font-semibold text-text-primary">
                   {new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                 </h3>
-                {(tasksByDay.get(anchor) ?? []).length === 0 ? (
-                  <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                {(showOnlyCalls ? 0 : (tasksByDay.get(anchor) ?? []).length) === 0 && (callsByDay.get(anchor) ?? []).length === 0 ? (
+                  <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
                 ) : (
                   <div className="space-y-2">
-                    {(tasksByDay.get(anchor) ?? []).map(task => (
+                    {!showOnlyCalls && (tasksByDay.get(anchor) ?? []).map(task => (
                       <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
                         onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                    ))}
+                    {(callsByDay.get(anchor) ?? []).map(call => (
+                      <CallRow key={call.id} call={call} onNavigate={navigate} />
                     ))}
                   </div>
                 )}
@@ -485,13 +664,16 @@ export default function Tasks() {
             {/* Day view */}
             {view === 'day' && (
               <div className="space-y-2">
-                {(tasksByDay.get(anchor) ?? []).length === 0 ? (
-                  <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εργασίες αυτή την ημέρα.</p>
+                {(showOnlyCalls ? 0 : (tasksByDay.get(anchor) ?? []).length) === 0 && (callsByDay.get(anchor) ?? []).length === 0 ? (
+                  <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
                 ) : (
                   <div className="space-y-2">
-                    {(tasksByDay.get(anchor) ?? []).map(task => (
+                    {!showOnlyCalls && (tasksByDay.get(anchor) ?? []).map(task => (
                       <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
                         onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                    ))}
+                    {(callsByDay.get(anchor) ?? []).map(call => (
+                      <CallRow key={call.id} call={call} onNavigate={navigate} />
                     ))}
                   </div>
                 )}
@@ -543,7 +725,7 @@ function EditTaskModal({ task, tenantId, saving, error, onSubmit, onClose }: {
         <div className="p-6">
           <TaskForm
             tenantId={tenantId}
-            initial={{ ...taskToFormValues(task), case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined }}
+            initial={{ ...taskToFormValues(task), id: task.id, case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined }}
             saving={saving}
             error={error}
             onSubmit={onSubmit}
@@ -551,6 +733,38 @@ function EditTaskModal({ task, tenantId, saving, error, onSubmit, onClose }: {
             submitLabel="Αποθήκευση"
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Call row ──────────────────────────────────────────────────────────────────
+
+function CallRow({ call, onNavigate }: {
+  call: Call;
+  onNavigate: ReturnType<typeof useNavigate>;
+}) {
+  const isPhone = call.direction === 'phone';
+  return (
+    <div className={`rounded-xl border px-4 py-3 space-y-1 ${isPhone ? 'border-teal-500/20 bg-teal-500/5' : 'border-sky-500/20 bg-sky-500/5'}`}>
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${isPhone ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'}`}>
+          {isPhone ? <Phone className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-text-primary">{call.caller_name ?? call.phone ?? 'Άγνωστος'}</p>
+          {call.phone && call.caller_name && <p className="text-xs text-text-secondary">{call.phone}</p>}
+          {call.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{call.description}</p>}
+          {call.case_code && (
+            <button onClick={() => call.case_id && onNavigate(`/cases/${call.case_id}`)}
+              className="text-xs text-primary hover:underline cursor-pointer mt-0.5 font-mono">
+              {call.case_code} — {call.case_title}
+            </button>
+          )}
+        </div>
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${isPhone ? 'bg-teal-500/15 text-teal-500' : 'bg-sky-500/15 text-sky-500'}`}>
+          {isPhone ? 'Τηλέφωνο' : 'Αυτοπρόσωπα'}
+        </span>
       </div>
     </div>
   );
@@ -566,28 +780,30 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
   onEdit: (t: Task) => void;
   onNavigate: ReturnType<typeof useNavigate>;
 }) {
-  const overdue = task.status === 'open' && !!task.due_date && task.due_date < todayStr;
   const done = task.status === 'done';
+  const color = taskDueColor(task.due_date, todayStr, task.status);
 
   const totalExpenses = task.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
   const hasFinancials = task.fee != null || (task.expenses?.length ?? 0) > 0;
 
   return (
-    <div className={`rounded-xl border px-4 py-3 space-y-2 ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
+    <div className={`rounded-xl border px-4 py-3 space-y-2 ${color ? DUE_COLOR_CARD[color] : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
       <div className="flex items-start gap-3">
         <button
           onClick={() => onToggle(task)}
           disabled={toggling === task.id}
           className={['mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
             done ? 'border-green-500 bg-green-500 text-white' :
-            overdue ? 'border-orange-400 hover:bg-orange-400/20' :
+            color ? DUE_COLOR_BTN[color] :
             'border-border/30 hover:border-primary'].join(' ')}
         >
           {done && <Check className="h-3 w-3" />}
           {!done && toggling === task.id && <RotateCcw className="h-2.5 w-2.5 animate-spin text-text-secondary" />}
         </button>
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium ${done ? 'line-through text-text-secondary' : 'text-text-primary'}`}>{task.title}</p>
+          <button onClick={() => onNavigate(`/tasks/${task.id}`)} className="text-left hover:underline cursor-pointer">
+            <p className={`text-sm font-medium ${done ? 'text-text-secondary' : 'text-text-primary'}`}>{task.title}</p>
+          </button>
           {task.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{task.description}</p>}
           <ExtraDataSummary task={task} />
           <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -602,13 +818,19 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
                 {TASK_CATEGORIES[task.category]}
               </span>
             )}
+            {(task.linked_tasks?.length ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/8 text-text-secondary">
+                <Link2 className="h-2.5 w-2.5" />
+                {task.linked_tasks!.length}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {overdue && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/15 text-orange-500">
+          {color && (
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${DUE_COLOR_CHIP[color]}`}>
               <AlertCircle className="h-2.5 w-2.5" />
-              Ληξ/θεσμη
+              {color === 'red' ? 'Ληξ/θεσμη' : color === 'purple' ? '≤7 ημ.' : color === 'orange' ? '≤20 ημ.' : '≤30 ημ.'}
             </span>
           )}
           <button
@@ -637,13 +859,13 @@ function ExtraDataSummary({ task }: { task: Task }) {
   const lines: React.ReactNode[] = [];
 
   if (task.category && task.extra_data) {
-    if (task.category === 'legal_act') {
+    if (task.category === 'legal_act' || task.category === 'lawsuit') {
       const d = task.extra_data as LegalActData;
       const parts = [
-        d.authority && `Αρχή: ${d.authority}`,
-        d.gak && `ΓΑΚ: ${d.gak}`,
-        d.eak && `ΕΑΚ: ${d.eak}`,
-        d.protocol_number && `Αρ. Πρωτ.: ${d.protocol_number}`,
+        d.authority && `${task.category === 'lawsuit' ? 'Δικαστήριο' : 'Αρχή'}: ${d.authority}`,
+        task.category === 'lawsuit' && d.gak && `ΓΑΚ: ${d.gak}`,
+        task.category === 'lawsuit' && d.eak && `ΕΑΚ: ${d.eak}`,
+        task.category === 'legal_act' && d.protocol_number && `Αρ. Πρωτ.: ${d.protocol_number}`,
       ].filter(Boolean);
       if (parts.length) lines.push(<span key="legal">{parts.join(' · ')}</span>);
     } else if (task.category === 'appointment') {

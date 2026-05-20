@@ -15,6 +15,25 @@ export async function fetchCalls(tenantId: string): Promise<Call[]> {
   }));
 }
 
+export async function fetchCallsForMonth(tenantId: string, year: number, month: number): Promise<Call[]> {
+  const from = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const toDate = new Date(year, month + 1, 1);
+  const to = toDate.toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from('calls')
+    .select('*, cases(code, title)')
+    .eq('tenant_id', tenantId)
+    .gte('created_at', from)
+    .lt('created_at', to)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    case_code: r.cases?.code ?? null,
+    case_title: r.cases?.title ?? null,
+  }));
+}
+
 export async function fetchUnlinkedCalls(tenantId: string): Promise<Call[]> {
   const { data, error } = await supabase
     .from('calls')

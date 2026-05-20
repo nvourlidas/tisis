@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Phone, CheckSquare, CalendarClock,
-  Check, RotateCcw, PhoneIncoming, PhoneOutgoing, Plus,
+  Check, RotateCcw, Plus,
   ChevronLeft, ChevronRight, X as XIcon,
   Clock, LinkIcon, Users, Briefcase,
 } from 'lucide-react';
@@ -18,6 +18,34 @@ import TaskForm, { type TaskFormValues } from './Tasks/TaskForm';
 import type { Task, TaskExpense } from './Tasks/taskUtils';
 import type { Call } from './Calls/types';
 import { formatDate } from '../lib/dateUtils';
+
+function taskDueColor(dueDate: string | null | undefined, todayStr: string, status: string) {
+  if (status === 'done' || !dueDate) return null;
+  const diff = Math.round((new Date(dueDate + 'T00:00:00').getTime() - new Date(todayStr + 'T00:00:00').getTime()) / 86400000);
+  if (diff <= 0) return 'red';
+  if (diff <= 7) return 'purple';
+  if (diff <= 20) return 'orange';
+  if (diff <= 30) return 'yellow';
+  return null;
+}
+const DUE_COLOR_CHIP: Record<string, string> = {
+  red: 'bg-red-500/15 text-red-500',
+  purple: 'bg-purple-500/15 text-purple-500',
+  orange: 'bg-orange-500/15 text-orange-500',
+  yellow: 'bg-yellow-500/15 text-yellow-500',
+};
+const DUE_COLOR_CARD: Record<string, string> = {
+  red: 'border-red-500/20 bg-red-500/5 hover:bg-red-500/8',
+  purple: 'border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/8',
+  orange: 'border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/8',
+  yellow: 'border-yellow-500/20 bg-yellow-500/5 hover:bg-yellow-500/8',
+};
+const DUE_COLOR_BTN: Record<string, string> = {
+  red: 'border-red-400 hover:bg-red-400/20',
+  purple: 'border-purple-400 hover:bg-purple-400/20',
+  orange: 'border-orange-400 hover:bg-orange-400/20',
+  yellow: 'border-yellow-400 hover:bg-yellow-400/20',
+};
 
 export default function Dashboard() {
   const { profile } = useAuth();
@@ -86,7 +114,7 @@ export default function Dashboard() {
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
         >
           <Phone className="h-4 w-4" />
-          Νέα Κλήση
+          Νέο Γεγονός
         </button>
       </div>
 
@@ -182,7 +210,7 @@ export default function Dashboard() {
           icon={<Phone className="h-4 w-4" />}
           iconColor="text-amber-500"
           iconBg="bg-amber-500/10"
-          title="Κλήσεις χωρίς υπόθεση"
+          title="Γεγονότα χωρίς υπόθεση"
           badge={unlinkedCalls.length}
           badgeColor="bg-amber-500/15 text-amber-500"
           action={{ label: 'Προβολή όλων', onClick: () => navigate('/calls') }}
@@ -355,15 +383,13 @@ function TaskRow({ task, toggling, onToggle, onNavigate, onSelect }: {
   onSelect?: (t: Task) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
-  const overdue = task.status === 'open' && !!task.due_date && task.due_date < today;
+  const color = taskDueColor(task.due_date, today, task.status);
 
   return (
     <div
       onClick={() => onSelect?.(task)}
       className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-all ${onSelect ? 'cursor-pointer' : ''} ${
-        overdue
-          ? 'border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/8'
-          : 'border-border/10 bg-background hover:bg-secondary-background'
+        color ? DUE_COLOR_CARD[color] : 'border-border/10 bg-background hover:bg-secondary-background'
       }`}
     >
       <button
@@ -373,8 +399,8 @@ function TaskRow({ task, toggling, onToggle, onNavigate, onSelect }: {
           'mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
           task.status === 'done'
             ? 'border-green-500 bg-green-500 text-white'
-            : overdue
-              ? 'border-orange-400 hover:bg-orange-400/20'
+            : color
+              ? DUE_COLOR_BTN[color]
               : 'border-border/30 hover:border-primary hover:bg-primary/10',
         ].join(' ')}
       >
@@ -397,7 +423,7 @@ function TaskRow({ task, toggling, onToggle, onNavigate, onSelect }: {
       </div>
       {task.due_date && (
         <span className={`text-xs shrink-0 px-2 py-0.5 rounded-full font-medium ${
-          overdue ? 'bg-orange-500/15 text-orange-500' : 'bg-border/5 text-text-secondary'
+          color ? DUE_COLOR_CHIP[color] : 'bg-border/5 text-text-secondary'
         }`}>
           {formatDate(task.due_date, { day: '2-digit', month: '2-digit' })}
         </span>
@@ -444,11 +470,11 @@ function UnlinkedCallRow({ call, tenantId, onLinked }: {
     <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3 space-y-2 hover:border-amber-500/25 transition-colors">
       <div className="flex items-start gap-2">
         <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${
-          call.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
+          call.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
         }`}>
-          {call.direction === 'incoming'
-            ? <PhoneIncoming className="h-3.5 w-3.5" />
-            : <PhoneOutgoing className="h-3.5 w-3.5" />}
+          {call.direction === 'phone'
+            ? <Phone className="h-3.5 w-3.5" />
+            : <Users className="h-3.5 w-3.5" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -549,7 +575,7 @@ function DashboardCalendar({
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
 
-  const [view, setView] = useState<CalendarView>('week');
+  const [view, setView] = useState<CalendarView>('month');
   const [year, setYear] = useState(todayDate.getFullYear());
   const [month, setMonth] = useState(todayDate.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -684,17 +710,17 @@ function DashboardCalendar({
                 </span>
                 <div className="flex flex-col gap-0.5 overflow-hidden">
                   {tasks_.slice(0, 2).map((item) => {
-                    const ov = item.kind === 'task' && item.status === 'open' && ds < todayStr;
                     const done = item.kind === 'task' && item.status === 'done';
+                    const col = item.kind === 'task' ? taskDueColor(item.due_date, todayStr, item.status) : null;
                     return (
-                      <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate', done ? 'bg-green-500/10 text-green-500 line-through opacity-60' : ov ? 'bg-orange-500/15 text-orange-500' : 'bg-primary/15 text-primary'].join(' ')}>
+                      <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate', done ? 'bg-green-500/10 text-green-500 opacity-60' : col ? DUE_COLOR_CHIP[col] : 'bg-primary/15 text-primary'].join(' ')}>
                         {item.kind === 'task' ? item.title : ''}
                       </span>
                     );
                   })}
                   {calls_.slice(0, 1).map((item) => (
-                    <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate', item.kind === 'call' && item.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'].join(' ')}>
-                      {item.kind === 'call' ? (item.caller_name ?? item.phone ?? 'Κλήση') : ''}
+                    <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate', item.kind === 'call' && item.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'].join(' ')}>
+                      {item.kind === 'call' ? (item.caller_name ?? item.phone ?? 'Γεγονός') : ''}
                     </span>
                   ))}
                   {items.length > 3 && <span className="text-[13px] text-text-secondary px-1">+{items.length - 3}</span>}
@@ -729,17 +755,17 @@ function DashboardCalendar({
                 <div className="flex flex-col gap-0.5 overflow-hidden">
                   {items.map((item) => {
                     if (item.kind === 'task') {
-                      const ov = item.status === 'open' && ds < todayStr;
                       const done = item.status === 'done';
+                      const col = taskDueColor(item.due_date, todayStr, item.status);
                       return (
-                        <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate block', done ? 'bg-green-500/10 text-green-500 line-through opacity-60' : ov ? 'bg-orange-500/15 text-orange-500' : 'bg-primary/15 text-primary'].join(' ')}>
+                        <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate block', done ? 'bg-green-500/10 text-green-500 opacity-60' : col ? DUE_COLOR_CHIP[col] : 'bg-primary/15 text-primary'].join(' ')}>
                           {item.title}
                         </span>
                       );
                     }
                     return (
-                      <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate block', item.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'].join(' ')}>
-                        {item.caller_name ?? item.phone ?? 'Κλήση'}
+                      <span key={item.id} className={['text-[13px] leading-tight px-1.5 py-0.5 rounded-md truncate block', item.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'].join(' ')}>
+                        {item.caller_name ?? item.phone ?? 'Γεγονός'}
                       </span>
                     );
                   })}
@@ -824,26 +850,26 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
         <div className="space-y-2">
           {items.map((item) => {
             if (item.kind === 'task') {
-              const overdue = item.status === 'open' && item.due_date < todayStr;
               const done = item.status === 'done';
+              const col = taskDueColor(item.due_date, todayStr, item.status);
               const totalExpenses = item.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
               const hasFinancials = item.fee || (item.expenses?.length ?? 0) > 0;
               return (
-                <div key={item.id} onClick={() => onSelectTask(item as unknown as Task)} className={`rounded-xl border px-4 py-3 space-y-2 transition-all cursor-pointer ${overdue ? 'border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/8' : done ? 'border-green-500/15 bg-green-500/5 opacity-70 hover:opacity-90' : 'border-border/10 bg-background hover:bg-secondary-background'}`}>
+                <div key={item.id} onClick={() => onSelectTask(item as unknown as Task)} className={`rounded-xl border px-4 py-3 space-y-2 transition-all cursor-pointer ${col ? DUE_COLOR_CARD[col] : done ? 'border-green-500/15 bg-green-500/5 opacity-70 hover:opacity-90' : 'border-border/10 bg-background hover:bg-secondary-background'}`}>
                   <div className="flex items-start gap-3">
                     <button
                       onClick={(e) => { e.stopPropagation(); onToggleTask(item as unknown as Task); }}
                       disabled={toggling === item.id}
                       className={[
                         'mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',
-                        done ? 'border-green-500 bg-green-500 text-white' : overdue ? 'border-orange-400 hover:bg-orange-400/20' : 'border-border/30 hover:border-primary hover:bg-primary/10',
+                        done ? 'border-green-500 bg-green-500 text-white' : col ? DUE_COLOR_BTN[col] : 'border-border/30 hover:border-primary hover:bg-primary/10',
                       ].join(' ')}
                     >
                       {done && <Check className="h-3 w-3" />}
                       {!done && toggling === item.id && <RotateCcw className="h-2.5 w-2.5 animate-spin text-text-secondary" />}
                     </button>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${done ? 'line-through text-text-secondary' : 'text-text-primary'}`}>{item.title}</p>
+                      <p className={`text-sm font-medium ${done ? 'text-text-secondary' : 'text-text-primary'}`}>{item.title}</p>
                       {item.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{item.description}</p>}
                       <div className="flex flex-wrap items-center gap-2 mt-1">
                         {item.case_code && (
@@ -858,8 +884,10 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                         )}
                       </div>
                     </div>
-                    {overdue && (
-                      <span className="text-[10px] font-semibold text-orange-500 shrink-0 bg-orange-500/10 px-2 py-0.5 rounded-full">Ληξ/θεσμη</span>
+                    {col && (
+                      <span className={`text-[10px] font-semibold shrink-0 px-2 py-0.5 rounded-full ${DUE_COLOR_CHIP[col]}`}>
+                        {col === 'red' ? 'Ληξ/θεσμη' : col === 'purple' ? '≤7 ημ.' : col === 'orange' ? '≤20 ημ.' : '≤30 ημ.'}
+                      </span>
                     )}
                   </div>
                   {hasFinancials && (
@@ -878,8 +906,8 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
             return (
               <div key={item.id} className="rounded-xl border border-border/10 bg-background px-4 py-3 space-y-1 hover:border-border/20 transition-colors">
                 <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${item.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                    {item.direction === 'incoming' ? <PhoneIncoming className="h-3.5 w-3.5" /> : <PhoneOutgoing className="h-3.5 w-3.5" />}
+                  <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${item.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                    {item.direction === 'phone' ? <Phone className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">

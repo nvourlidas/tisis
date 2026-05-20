@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Check, RotateCcw, X, AlertCircle, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Check, RotateCcw, X, AlertCircle, ChevronLeft, ChevronRight, Pencil, Search } from 'lucide-react';
 import { fetchCaseTasks, completeTask, reopenTask } from '../caseUtils';
 import { updateTask, TASK_CATEGORIES, type TaskCategory, type LegalActData, type AppointmentData, type TaskExpense } from '../../Tasks/taskUtils';
 import { supabase } from '../../../lib/supabase';
@@ -36,6 +37,7 @@ const CATEGORY_COLORS: Record<TaskCategory, string> = {
 type Props = { caseId: string; tenantId?: string };
 
 export default function CaseTasks({ caseId }: Props) {
+  const navigate = useNavigate();
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
 
@@ -50,6 +52,7 @@ export default function CaseTasks({ caseId }: Props) {
   const [toggling, setToggling] = useState<string | null>(null);
 
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [view, setView] = useState<CalendarView>('month');
   const [year, setYear] = useState(todayDate.getFullYear());
@@ -152,10 +155,14 @@ export default function CaseTasks({ caseId }: Props) {
     else nextMonth();
   };
 
-  const filteredTasks = useMemo(() =>
-    categoryFilter ? tasks.filter(t => t.category === categoryFilter) : tasks,
-    [tasks, categoryFilter]
-  );
+  const filteredTasks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return tasks.filter(t => {
+      if (categoryFilter && t.category !== categoryFilter) return false;
+      if (q && !t.title.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [tasks, categoryFilter, searchQuery]);
 
   const tasksByDay = useMemo(() => {
     const map = new Map<string, CaseTask[]>();
@@ -219,16 +226,33 @@ export default function CaseTasks({ caseId }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="text-sm text-text-secondary">{open.length} ανοιχτές</span>
           {done.length > 0 && <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full font-medium">{done.length} ολοκληρωμένες</span>}
         </div>
-        <button onClick={() => { setShowForm(v => !v); setEditingTask(null); }}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer">
-          <Plus className="h-3.5 w-3.5" />
-          Νέα Εργασία
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 h-9 w-52 rounded-xl border border-border/10 bg-secondary-background px-3">
+            <Search className="h-4 w-4 text-text-secondary shrink-0" />
+            <input
+              type="text"
+              placeholder="Αναζήτηση εργασιών…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-secondary outline-none min-w-0"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="p-0.5 rounded hover:bg-white/10 text-text-secondary cursor-pointer shrink-0">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <button onClick={() => { setShowForm(v => !v); setEditingTask(null); }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer">
+            <Plus className="h-3.5 w-3.5" />
+            Νέα Εργασία
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -278,6 +302,16 @@ export default function CaseTasks({ caseId }: Props) {
         <p className="text-sm text-text-secondary">Φόρτωση…</p>
       ) : tasks.length === 0 ? (
         <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες για αυτή την υπόθεση.</p>
+      ) : searchQuery.trim() ? (
+        <div className="space-y-2">
+          {filteredTasks.length === 0 ? (
+            <p className="text-sm text-text-secondary py-4 text-center">Δεν βρέθηκαν εργασίες.</p>
+          ) : (
+            filteredTasks.map(task => (
+              <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+            ))
+          )}
+        </div>
       ) : (
         <div className="space-y-4">
           <div className="rounded-xl border border-border/10 bg-secondary-background p-4 space-y-3">
@@ -326,7 +360,7 @@ export default function CaseTasks({ caseId }: Props) {
                           const done = task.status === 'done';
                           return (
                             <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full',
-                              done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
+                              done ? 'bg-green-500/10 text-green-400 opacity-60' :
                               overdue ? 'bg-orange-500/15 text-orange-400' :
                               task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
                               {task.title}
@@ -354,7 +388,7 @@ export default function CaseTasks({ caseId }: Props) {
                   ) : (
                     <div className="space-y-2">
                       {selectedTasks.map(task => (
-                        <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} />
+                        <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
                       ))}
                     </div>
                   )}
@@ -386,7 +420,7 @@ export default function CaseTasks({ caseId }: Props) {
                           const done = task.status === 'done';
                           return (
                             <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block',
-                              done ? 'bg-green-500/10 text-green-400 line-through opacity-60' :
+                              done ? 'bg-green-500/10 text-green-400 opacity-60' :
                               overdue ? 'bg-orange-500/15 text-orange-400' :
                               task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
                               {task.title}
@@ -407,7 +441,7 @@ export default function CaseTasks({ caseId }: Props) {
                 ) : (
                   <div className="space-y-2">
                     {(tasksByDay.get(anchor) ?? []).map(task => (
-                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} />
+                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
                     ))}
                   </div>
                 )}
@@ -422,7 +456,7 @@ export default function CaseTasks({ caseId }: Props) {
                 ) : (
                   <div className="space-y-2">
                     {(tasksByDay.get(anchor) ?? []).map(task => (
-                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} />
+                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
                     ))}
                   </div>
                 )}
@@ -435,7 +469,7 @@ export default function CaseTasks({ caseId }: Props) {
               <h3 className="text-sm font-semibold text-text-secondary">Χωρίς προθεσμία ({noDueDateTasks.length})</h3>
               <div className="space-y-2">
                 {noDueDateTasks.map(task => (
-                  <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} />
+                  <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
                 ))}
               </div>
             </div>
@@ -486,12 +520,13 @@ function EditTaskModal({ task, saving, error, initialValues, onSubmit, onClose }
 
 // ── Task row ──────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, todayStr, toggling, onToggle, onEdit }: {
+function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
   task: CaseTask;
   todayStr: string;
   toggling: string | null;
   onToggle: (t: CaseTask) => void;
   onEdit: (t: CaseTask) => void;
+  onNavigate: (path: string) => void;
 }) {
   const overdue = task.status === 'open' && !!task.due_date && task.due_date < todayStr;
   const done = task.status === 'done';
@@ -511,7 +546,9 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit }: {
           {!done && toggling === task.id && <RotateCcw className="h-2.5 w-2.5 animate-spin text-text-secondary" />}
         </button>
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium ${done ? 'line-through text-text-secondary' : 'text-text-primary'}`}>{task.title}</p>
+          <button onClick={() => onNavigate(`/tasks/${task.id}`)} className="text-left hover:underline cursor-pointer">
+            <p className={`text-sm font-medium ${done ? 'text-text-secondary' : 'text-text-primary'}`}>{task.title}</p>
+          </button>
           {task.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{task.description}</p>}
           <ExtraDataSummary task={task} />
           {task.category && (

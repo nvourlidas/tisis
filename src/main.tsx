@@ -19,6 +19,7 @@ import Contacts from './pages/Contacts/Contacts';
 import ContactDetail from './pages/Contacts/ContactDetail';
 import Calls from './pages/Calls/Calls';
 import Tasks from './pages/Tasks/Tasks';
+import TaskDetail from './pages/Tasks/TaskDetail';
 import Finances from './pages/Finances/Finances';
 import UsersSettings from './pages/Settings/Users';
 import ContactRoles from './pages/Settings/ContactRoles';
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
       { path: 'contacts/:id', element: <ContactDetail /> },
       { path: 'calls', element: <Calls /> },
       { path: 'tasks', element: <Tasks /> },
+      { path: 'tasks/:id', element: <TaskDetail /> },
       { path: 'finances', element: <Finances /> },
       { path: 'settings/users', element: <UsersSettings /> },
       { path: 'settings/contact-roles', element: <ContactRoles /> },

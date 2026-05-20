@@ -120,6 +120,23 @@ Deno.serve(async (req) => {
       return json({ ok: true, files: data.files ?? [] })
     }
 
+    if (action === 'create-subfolder') {
+      if (!folderId || !folderName) return json({ error: 'folderId and folderName are required' }, 400)
+
+      const res = await fetch(`${DRIVE_BASE}/files?fields=id,name,mimeType,modifiedTime,webViewLink`, {
+        method: 'POST',
+        headers: { ...authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: folderName,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [folderId],
+        }),
+      })
+      const folder = await res.json()
+      if (!res.ok) throw new Error(folder.error?.message ?? 'Failed to create subfolder')
+      return json({ ok: true, folder })
+    }
+
     if (action === 'delete-file') {
       if (!fileId) return json({ error: 'fileId is required' }, 400)
       const res = await fetch(`${DRIVE_BASE}/files/${encodeURIComponent(fileId)}`, {

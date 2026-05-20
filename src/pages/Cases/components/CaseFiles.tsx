@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Upload, Trash2, ExternalLink, FileText, FolderOpen, Loader2, RefreshCw } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, FileText, FolderOpen, FolderPlus, Loader2, RefreshCw, ChevronRight, Check, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 interface DriveFile {
@@ -9,6 +9,12 @@ interface DriveFile {
   size?: number;
   modifiedTime: string;
   webViewLink: string;
+}
+
+interface FolderCrumb {
+  id: string;
+  name: string;
+  url: string | null;
 }
 
 interface Props {
@@ -51,18 +57,28 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [noToken, setNoToken] = useState(false);
+  const [breadcrumbs, setBreadcrumbs] = useState<FolderCrumb[]>([]);
+  const [showSubfolderInput, setShowSubfolderInput] = useState(false);
+  const [subfolderName, setSubfolderName] = useState('');
+  const [creatingSubfolder, setCreatingSubfolder] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const subfolderInputRef = useRef<HTMLInputElement>(null);
+
+  const currentFolderId = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].id : folderId;
+  const currentFolderUrl = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].url : folderUrl;
 
   useEffect(() => {
     if (!folderId) return;
-    loadFiles();
+    setBreadcrumbs([]);
+    loadFiles(folderId);
   }, [folderId]);
 
-  async function loadFiles() {
-    if (!folderId) return;
+  async function loadFiles(id?: string) {
+    const targetId = id ?? currentFolderId;
+    if (!targetId) return;
     setLoading(true);
     try {
-      const data = await callDriveSync({ action: 'list-files', folderId });
+      const data = await callDriveSync({ action: 'list-files', folderId: targetId });
       if (data.reason === 'no_google_token') { setNoToken(true); return; }
       if (data.ok) setFiles(data.files);
     } finally {
@@ -70,16 +86,32 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
     }
   }
 
+  function enterFolder(folder: DriveFile) {
+    setBreadcrumbs((prev) => [...prev, { id: folder.id, name: folder.name, url: folder.webViewLink }]);
+    loadFiles(folder.id);
+  }
+
+  function navigateCrumb(index: number) {
+    if (index === -1) {
+      setBreadcrumbs([]);
+      loadFiles(folderId!);
+    } else {
+      const crumb = breadcrumbs[index];
+      setBreadcrumbs((prev) => prev.slice(0, index + 1));
+      loadFiles(crumb.id);
+    }
+  }
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !folderId) return;
+    if (!file || !currentFolderId) return;
     setUploading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const form = new FormData();
       form.append('action', 'upload-file');
       form.append('case_id', caseId);
-      form.append('folder_id', folderId);
+      form.append('folder_id', currentFolderId);
       form.append('file', file);
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-drive-sync`, {
         method: 'POST',
@@ -147,25 +179,65 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
     );
   }
 
+  async function handleCreateSubfolder() {
+    const name = subfolderName.trim();
+    if (!name || !currentFolderId) return;
+    setCreatingSubfolder(true);
+    try {
+      const data = await callDriveSync({ action: 'create-subfolder', folderId: currentFolderId, folderName: name });
+      if (data.ok && data.folder) {
+        setFiles((prev) => [data.folder, ...prev]);
+        setShowSubfolderInput(false);
+        setSubfolderName('');
+      }
+    } finally {
+      setCreatingSubfolder(false);
+    }
+  }
+
+  const isFolder = (f: DriveFile) => f.mimeType === 'application/vnd.google-apps.folder';
+
   return (
     <div className="space-y-3">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-1 text-sm flex-wrap">
+        <button
+          onClick={() => navigateCrumb(-1)}
+          className={`hover:text-primary transition-colors ${breadcrumbs.length === 0 ? 'text-text-primary font-medium' : 'text-text-secondary'}`}
+        >
+          <FolderOpen className="h-4 w-4 inline mr-1" />
+          Φάκελος υπόθεσης
+        </button>
+        {breadcrumbs.map((crumb, i) => (
+          <span key={crumb.id} className="flex items-center gap-1">
+            <ChevronRight className="h-3.5 w-3.5 text-text-secondary" />
+            <button
+              onClick={() => navigateCrumb(i)}
+              className={`hover:text-primary transition-colors ${i === breadcrumbs.length - 1 ? 'text-text-primary font-medium' : 'text-text-secondary'}`}
+            >
+              {crumb.name}
+            </button>
+          </span>
+        ))}
+      </div>
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {folderUrl && (
+          {currentFolderUrl && (
             <a
-              href={folderUrl}
+              href={currentFolderUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
             >
-              <FolderOpen className="h-4 w-4" />
-              Άνοιγμα φακέλου
+              <ExternalLink className="h-3.5 w-3.5" />
+              Άνοιγμα στο Drive
             </a>
           )}
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={loadFiles}
+            onClick={() => loadFiles()}
             disabled={loading}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors disabled:opacity-50 cursor-pointer"
             title="Ανανέωση"
@@ -173,6 +245,13 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <input ref={inputRef} type="file" className="hidden" onChange={handleUpload} />
+          <button
+            onClick={() => { setShowSubfolderInput(true); setTimeout(() => subfolderInputRef.current?.focus(), 50); }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors cursor-pointer"
+            title="Νέος υποφάκελος"
+          >
+            <FolderPlus className="h-4 w-4" />
+          </button>
           <button
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
@@ -184,9 +263,36 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
         </div>
       </div>
 
+      {showSubfolderInput && (
+        <div className="flex items-center gap-2">
+          <FolderPlus className="h-4 w-4 text-amber-400 shrink-0" />
+          <input
+            ref={subfolderInputRef}
+            className="input flex-1 rounded-lg border-border/15 text-sm py-1.5"
+            placeholder="Όνομα υποφακέλου…"
+            value={subfolderName}
+            onChange={(e) => setSubfolderName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreateSubfolder(); if (e.key === 'Escape') { setShowSubfolderInput(false); setSubfolderName(''); } }}
+          />
+          <button
+            onClick={handleCreateSubfolder}
+            disabled={creatingSubfolder || !subfolderName.trim()}
+            className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-40 cursor-pointer"
+          >
+            {creatingSubfolder ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={() => { setShowSubfolderInput(false); setSubfolderName(''); }}
+            className="p-1.5 text-text-secondary hover:text-text-primary rounded transition-colors cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-text-secondary py-4">
-          <Loader2 className="h-4 w-4 animate-spin" /> Φόρτωση αρχείων…
+          <Loader2 className="h-4 w-4 animate-spin" /> Φόρτωση…
         </div>
       ) : files.length === 0 ? (
         <div className="text-sm text-text-secondary py-4">Δεν υπάρχουν αρχεία στον φάκελο.</div>
@@ -195,10 +301,23 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
           {files.map((file) => (
             <div key={file.id} className="flex items-center justify-between py-2.5 gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <FileText className="h-4 w-4 text-text-secondary shrink-0" />
+                {isFolder(file)
+                  ? <FolderOpen className="h-4 w-4 text-amber-400 shrink-0" />
+                  : <FileText className="h-4 w-4 text-text-secondary shrink-0" />}
                 <div className="min-w-0">
-                  <p className="text-sm text-text-primary truncate">{file.name}</p>
-                  <p className="text-xs text-text-secondary">{formatBytes(file.size)} · {formatDate(file.modifiedTime)}</p>
+                  {isFolder(file) ? (
+                    <button
+                      onClick={() => enterFolder(file)}
+                      className="text-sm text-text-primary hover:text-primary truncate block text-left cursor-pointer"
+                    >
+                      {file.name}
+                    </button>
+                  ) : (
+                    <p className="text-sm text-text-primary truncate">{file.name}</p>
+                  )}
+                  <p className="text-xs text-text-secondary">
+                    {isFolder(file) ? 'Φάκελος' : formatBytes(file.size)} · {formatDate(file.modifiedTime)}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -211,16 +330,18 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>
-                <button
-                  onClick={() => handleDelete(file.id)}
-                  disabled={deletingId === file.id}
-                  className="p-1.5 text-text-secondary hover:text-red-400 rounded transition-colors disabled:opacity-50 cursor-pointer"
-                  title="Διαγραφή"
-                >
-                  {deletingId === file.id
-                    ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : <Trash2 className="h-4 w-4" />}
-                </button>
+                {!isFolder(file) && (
+                  <button
+                    onClick={() => handleDelete(file.id)}
+                    disabled={deletingId === file.id}
+                    className="p-1.5 text-text-secondary hover:text-red-400 rounded transition-colors disabled:opacity-50 cursor-pointer"
+                    title="Διαγραφή"
+                  >
+                    {deletingId === file.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Trash2 className="h-4 w-4" />}
+                  </button>
+                )}
               </div>
             </div>
           ))}

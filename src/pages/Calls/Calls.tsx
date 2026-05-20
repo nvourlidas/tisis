@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Phone, PhoneIncoming, PhoneOutgoing, Plus, AlertCircle, Link2, RotateCcw, Search, CalendarDays, X } from 'lucide-react';
+import { Phone, Users, Plus, AlertCircle, Link2, RotateCcw, Search, CalendarDays, X } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { fetchCalls, linkCallToCase, searchCasesForCall } from './callUtils';
 import type { Call } from './types';
@@ -133,7 +133,7 @@ export default function Calls() {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [directionFilter, setDirectionFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
+  const [directionFilter, setDirectionFilter] = useState<'all' | 'phone' | 'inperson'>('all');
   const [linkedFilter, setLinkedFilter] = useState<'all' | 'linked' | 'unlinked'>('all');
   const [datePreset, setDatePreset] = useState<DatePreset>('');
   const [dateFrom, setDateFrom] = useState('');
@@ -196,11 +196,11 @@ export default function Calls() {
       header: 'Τύπος',
       render: (c) => (
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-          c.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
+          c.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
         }`}>
-          {c.direction === 'incoming'
-            ? <PhoneIncoming className="h-3.5 w-3.5" />
-            : <PhoneOutgoing className="h-3.5 w-3.5" />}
+          {c.direction === 'phone'
+            ? <Phone className="h-3.5 w-3.5" />
+            : <Users className="h-3.5 w-3.5" />}
         </div>
       ),
       sortValue: (c) => c.direction,
@@ -264,15 +264,15 @@ export default function Calls() {
       {/* Header */}
       <div className="animate-fade-in-up flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Κλήσεις</h1>
-          <p className="text-sm text-text-secondary mt-0.5">{filteredCalls.length} κλήσεις</p>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Γεγονότα</h1>
+          <p className="text-sm text-text-secondary mt-0.5">{filteredCalls.length} γεγονότα</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
         >
           <Plus className="h-4 w-4" />
-          Νέα Κλήση
+          Νέο Γεγονός
         </button>
       </div>
 
@@ -281,7 +281,7 @@ export default function Calls() {
         <div className="animate-fade-in flex items-center gap-2.5 rounded-xl border border-orange-500/20 bg-orange-500/5 px-4 py-3">
           <AlertCircle className="h-4 w-4 text-orange-400 shrink-0" />
           <span className="text-sm text-orange-400 font-medium">
-            {unlinkedCount} {unlinkedCount === 1 ? 'κλήση χωρίς' : 'κλήσεις χωρίς'} σύνδεση με υπόθεση
+            {unlinkedCount} {unlinkedCount === 1 ? 'γεγονός χωρίς' : 'γεγονότα χωρίς'} σύνδεση με υπόθεση
           </span>
           <button
             onClick={() => setLinkedFilter('unlinked')}
@@ -307,11 +307,11 @@ export default function Calls() {
           </div>
           <select className="select shrink-0" value={directionFilter} onChange={(e) => setDirectionFilter(e.target.value as typeof directionFilter)}>
             <option value="all">Όλοι οι τύποι</option>
-            <option value="incoming">Εισερχόμενες</option>
-            <option value="outgoing">Εξερχόμενες</option>
+            <option value="phone">Τηλεφώνημα</option>
+            <option value="inperson">Δια ζώσης</option>
           </select>
           <select className="select shrink-0" value={linkedFilter} onChange={(e) => setLinkedFilter(e.target.value as typeof linkedFilter)}>
-            <option value="all">Όλες οι κλήσεις</option>
+            <option value="all">Όλα τα γεγονότα</option>
             <option value="linked">Συνδεδεμένες</option>
             <option value="unlinked">Ασύνδετες</option>
           </select>
@@ -379,7 +379,7 @@ export default function Calls() {
       {loading ? (
         <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
           <RotateCcw className="h-4 w-4 animate-spin" />
-          Φόρτωση κλήσεων…
+          Φόρτωση γεγονότων…
         </div>
       ) : (
         <div className="animate-fade-in-up stagger-2">
@@ -397,15 +397,15 @@ export default function Calls() {
                 </div>
                 <p className="text-sm">
                   {search || directionFilter !== 'all' || linkedFilter !== 'all' || dateFrom || dateTo
-                    ? 'Δεν βρέθηκαν κλήσεις με αυτά τα φίλτρα.'
-                    : 'Δεν υπάρχουν κλήσεις ακόμα.'}
+                    ? 'Δεν βρέθηκαν γεγονότα με αυτά τα φίλτρα.'
+                    : 'Δεν υπάρχουν γεγονότα ακόμα.'}
                 </p>
                 {!search && directionFilter === 'all' && linkedFilter === 'all' && !dateFrom && !dateTo && (
                   <button
                     onClick={() => setShowCreate(true)}
                     className="text-xs text-primary hover:underline cursor-pointer font-medium"
                   >
-                    Καταγράψτε την πρώτη κλήση →
+                    Καταγράψτε το πρώτο γεγονός →
                   </button>
                 )}
               </div>

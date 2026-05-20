@@ -6,11 +6,11 @@ Deno.serve(async (req) => {
     const auth = await authenticate(req)
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
-    const { phone, caller_name, direction, case_id, contact_id, description, follow_up_required, create_task, task_title, task_due_date } = await req.json()
+    const { phone, caller_name, direction, case_id, contact_id, description, follow_up_required, create_task, task_title, task_due_date, created_at } = await req.json()
 
     const { data: call, error } = await supabase
       .from('calls')
-      .insert({ tenant_id: tenantId, phone: phone || null, caller_name: caller_name || null, direction: direction || 'incoming', case_id: case_id || null, contact_id: contact_id || null, description: description || null, follow_up_required: follow_up_required ?? false })
+      .insert({ tenant_id: tenantId, phone: phone || null, caller_name: caller_name || null, direction: direction || 'phone', case_id: case_id || null, contact_id: contact_id || null, description: description || null, follow_up_required: follow_up_required ?? false, ...(created_at ? { created_at } : {}) })
       .select('id').single()
     if (error) return json({ error: error.message }, 400)
 

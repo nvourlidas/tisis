@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, PhoneIncoming, PhoneOutgoing, X, Link, Phone, RotateCcw } from 'lucide-react';
+import { Plus, Users, X, Link, Phone, RotateCcw } from 'lucide-react';
 import { fetchCaseCalls } from '../caseUtils';
 import { fetchUnlinkedCalls, linkCallToCase } from '../../Calls/callUtils';
 import NewCallModal from '../../Calls/modals/NewCallModal';
@@ -49,7 +49,7 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-text-secondary">{calls.length} κλήσεις</span>
+        <span className="text-sm text-text-secondary">{calls.length} γεγονότα</span>
         <div className="flex items-center gap-2">
           <button
             onClick={() => openMode('link')}
@@ -71,7 +71,7 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
             }`}
           >
             <Plus className="h-3.5 w-3.5" />
-            Νέα Κλήση
+            Νέο Γεγονός
           </button>
         </div>
       </div>
@@ -87,7 +87,7 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
       {mode === 'link' && (
         <div className="animate-fade-in-up rounded-xl border border-border/10 bg-secondary-background p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text-primary">Σύνδεση υπάρχουσας κλήσης</h3>
+            <h3 className="text-sm font-semibold text-text-primary">Σύνδεση υπάρχοντος γεγονότος</h3>
             <button onClick={() => setMode('none')} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer transition-colors">
               <X className="h-4 w-4" />
             </button>
@@ -97,13 +97,13 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
               <RotateCcw className="h-3.5 w-3.5 animate-spin" /> Φόρτωση…
             </div>
           ) : unlinked.length === 0 ? (
-            <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εκκρεμείς κλήσεις χωρίς υπόθεση.</p>
+            <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εκκρεμή γεγονότα χωρίς υπόθεση.</p>
           ) : (
             <div className="space-y-2">
               {unlinked.map((call) => (
                 <div key={call.id} className="flex items-center gap-3 rounded-xl border border-amber-500/15 bg-amber-500/5 px-4 py-3">
-                  <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${call.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                    {call.direction === 'incoming' ? <PhoneIncoming className="h-3.5 w-3.5" /> : <PhoneOutgoing className="h-3.5 w-3.5" />}
+                  <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${call.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                    {call.direction === 'phone' ? <Phone className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -133,22 +133,22 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
       {/* Call list */}
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-text-secondary animate-pulse-soft py-4">
-          <RotateCcw className="h-4 w-4 animate-spin" /> Φόρτωση κλήσεων…
+          <RotateCcw className="h-4 w-4 animate-spin" /> Φόρτωση γεγονότων…
         </div>
       ) : calls.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-10 text-text-secondary">
           <div className="w-12 h-12 rounded-2xl bg-border/5 flex items-center justify-center">
             <Phone className="h-6 w-6 opacity-30" />
           </div>
-          <p className="text-sm">Δεν υπάρχουν κλήσεις για αυτή την υπόθεση.</p>
+          <p className="text-sm">Δεν υπάρχουν γεγονότα για αυτή την υπόθεση.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {calls.map((call) => (
             <div key={call.id} className="rounded-xl border border-border/10 bg-secondary-background p-4 hover:border-border/20 transition-colors">
               <div className="flex items-start gap-3">
-                <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${call.direction === 'incoming' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                  {call.direction === 'incoming' ? <PhoneIncoming className="h-4 w-4" /> : <PhoneOutgoing className="h-4 w-4" />}
+                <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${call.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                  {call.direction === 'phone' ? <Phone className="h-4 w-4" /> : <Users className="h-4 w-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

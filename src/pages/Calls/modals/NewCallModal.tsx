@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, PhoneIncoming, PhoneOutgoing, Search, AlertCircle, UserCheck, UserPlus, CheckSquare, Pencil } from 'lucide-react';
+import { X, Phone, Users, Search, AlertCircle, UserCheck, UserPlus, CheckSquare, Pencil } from 'lucide-react';
 import { useAuth } from '../../../auth';
 import { createCall, searchContactsForCall, searchCasesForCall } from '../callUtils';
 import { createContact } from '../../Contacts/contactUtils';
@@ -19,10 +19,16 @@ type Props = {
   initialCaseId?: string;
 };
 
-const empty: CallFormData = {
+const nowLocal = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+};
+
+const empty = (): CallFormData => ({
   phone: '',
   caller_name: '',
-  direction: 'incoming',
+  direction: 'phone',
   case_id: '',
   contact_id: '',
   description: '',
@@ -30,13 +36,14 @@ const empty: CallFormData = {
   create_task: false,
   task_title: '',
   task_due_date: '',
-};
+  created_at: nowLocal(),
+});
 
 export default function NewCallModal({ open, onClose, onCreated, initialPhone, initialCaseId }: Props) {
   const { profile } = useAuth();
   const tenantId = profile?.tenant_id ?? '';
 
-  const [form, setForm] = useState<CallFormData>(() => ({ ...empty, phone: initialPhone ?? '' }));
+  const [form, setForm] = useState<CallFormData>(() => ({ ...empty(), phone: initialPhone ?? '' }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -64,7 +71,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
   useEffect(() => {
     if (open) {
       const phone = initialPhone ?? '';
-      setForm({ ...empty, phone, case_id: initialCaseId ?? '' });
+      setForm({ ...empty(), phone, case_id: initialCaseId ?? '' });
       setContactQuery(phone);
       setSelectedContact(null);
       setContactResults([]);
@@ -161,7 +168,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
       onCreated?.(callId);
       onClose();
     } catch (err: any) {
-      setError(err?.message ?? 'Αποτυχία καταχώρησης κλήσης.');
+      setError(err?.message ?? 'Αποτυχία καταχώρησης γεγονότος.');
     } finally {
       setSaving(false);
     }
@@ -219,16 +226,16 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-lg bg-secondary-background rounded-2xl border border-border/10 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/10 sticky top-0 bg-secondary-background z-10">
-          <h2 className="text-base font-semibold text-text-primary">Νέα Κλήση</h2>
+          <h2 className="text-base font-semibold text-text-primary">Νέο Γεγονός</h2>
           <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Direction toggle */}
+          {/* Direction toggle + date/time */}
           <div className="flex gap-2">
-            {(['incoming', 'outgoing'] as const).map((d) => (
+            {(['phone', 'inperson'] as const).map((d) => (
               <button
                 key={d}
                 type="button"
@@ -236,17 +243,39 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
                 className={[
                   'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all cursor-pointer',
                   form.direction === d
-                    ? d === 'incoming'
+                    ? d === 'phone'
                       ? 'border-green-500/30 bg-green-500/10 text-green-400'
                       : 'border-blue-500/30 bg-blue-500/10 text-blue-400'
                     : 'border-border/10 bg-white/3 text-text-secondary hover:bg-white/5',
                 ].join(' ')}
               >
-                {d === 'incoming'
-                  ? <><PhoneIncoming className="h-4 w-4" />Εισερχόμενη</>
-                  : <><PhoneOutgoing className="h-4 w-4" />Εξερχόμενη</>}
+                {d === 'phone'
+                  ? <><Phone className="h-4 w-4" />Τηλεφώνημα</>
+                  : <><Users className="h-4 w-4" />Δια ζώσης</>}
               </button>
             ))}
+          </div>
+
+          {/* Date + Time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Ημερομηνία</label>
+              <input
+                type="date"
+                className="input w-full"
+                value={form.created_at.slice(0, 10)}
+                onChange={(e) => set('created_at', e.target.value + 'T' + (form.created_at.slice(11, 16) || '00:00'))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Ώρα</label>
+              <input
+                type="time"
+                className="input w-full"
+                value={form.created_at.slice(11, 16)}
+                onChange={(e) => set('created_at', (form.created_at.slice(0, 10) || new Date().toISOString().slice(0, 10)) + 'T' + e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Contact search */}
@@ -333,7 +362,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
             <textarea
               className="input w-full resize-none"
               rows={3}
-              placeholder="Σύντομη περιγραφή της κλήσης…"
+              placeholder="Σύντομη περιγραφή του γεγονότος…"
               value={form.description}
               onChange={(e) => set('description', e.target.value)}
               required
@@ -417,7 +446,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
             {!selectedCase && (
               <p className="mt-1.5 flex items-center gap-1 text-xs text-orange-400">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                Χωρίς σύνδεση υπόθεσης η κλήση θα σημανθεί ως εκκρεμής
+                Χωρίς σύνδεση υπόθεσης το γεγονός θα σημανθεί ως εκκρεμές
               </p>
             )}
           </div>
@@ -444,7 +473,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
                   else setPendingTask(null);
                 }}
               />
-              <span className="text-sm text-text-secondary">Δημιουργία εργασίας από αυτή την κλήση</span>
+              <span className="text-sm text-text-secondary">Δημιουργία εργασίας από αυτό το γεγονός</span>
             </label>
             {form.create_task && (
               <div className="pl-6">
@@ -480,7 +509,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onClose} className="btn-secondary cursor-pointer">Ακύρωση</button>
             <button type="submit" disabled={saving} className="btn-primary cursor-pointer">
-              {saving ? 'Αποθήκευση…' : 'Καταχώρηση Κλήσης'}
+              {saving ? 'Αποθήκευση…' : 'Καταχώρηση Γεγονότος'}
             </button>
           </div>
         </form>

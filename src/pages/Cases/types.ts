@@ -38,6 +38,7 @@ export type CaseFormData = {
   description: string;
   google_drive_url: string;
   notes: string;
+  created_at: string;
 };
 
 export type CaseContact = {
@@ -52,7 +53,7 @@ export type CaseCall = {
   id: string;
   phone: string | null;
   caller_name: string | null;
-  direction: 'incoming' | 'outgoing';
+  direction: 'phone' | 'inperson';
   description: string | null;
   follow_up_required: boolean;
   created_at: string;

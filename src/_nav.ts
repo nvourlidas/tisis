@@ -53,7 +53,7 @@ export const NAV: NavEntry[] = [
   { type: 'item', label: 'Υποθέσεις', to: '/cases', icon: Briefcase },
   { type: 'item', label: 'Εντολείς', to: '/clients', icon: Users },
   { type: 'item', label: 'Επαφές', to: '/contacts', icon: BookUser },
-  { type: 'item', label: 'Κλήσεις', to: '/calls', icon: Phone },
+  { type: 'item', label: 'Γεγονότα', to: '/calls', icon: Phone },
   { type: 'item', label: 'Οικονομικά', to: '/finances', icon: TrendingUp },
 
   { type: 'section', title: 'Ρυθμίσεις' },

@@ -1,4 +1,4 @@
-export type CallDirection = 'incoming' | 'outgoing';
+export type CallDirection = 'phone' | 'inperson';
 
 export type Call = {
   id: string;
@@ -28,4 +28,5 @@ export type CallFormData = {
   create_task: boolean;
   task_title: string;
   task_due_date: string;
+  created_at: string;
 };

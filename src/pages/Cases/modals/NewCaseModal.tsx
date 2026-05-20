@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Search, ChevronDown } from 'lucide-react';
+import { X, Search, ChevronDown, Wand2, Loader2 } from 'lucide-react';
 import { fetchClients } from '../../Clients/clientUtils';
-import { fetchStages } from '../caseUtils';
+import { fetchStages, nextCaseCode } from '../caseUtils';
 import type { Client } from '../../Clients/types';
 import type { CaseFormData, CaseStage } from '../types';
 
@@ -15,24 +15,28 @@ type Props = {
 
 const CASE_TYPES = ['Αστικό', 'Ποινικό', 'Διοικητικό', 'Εμπορικό'] as const;
 
-const empty: CaseFormData = {
+const today = () => new Date().toISOString().slice(0, 10);
+
+const empty = (): CaseFormData => ({
   code: '', title: '', client_id: '', status: 'active', type: '',
   stage_id: '', description: '', google_drive_url: '', notes: '',
-};
+  created_at: today(),
+});
 
 export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaultClientId }: Props) {
-  const [form, setForm] = useState<CaseFormData>({ ...empty, client_id: defaultClientId ?? '' });
+  const [form, setForm] = useState<CaseFormData>({ ...empty(), client_id: defaultClientId ?? '' });
   const [clients, setClients] = useState<Client[]>([]);
   const [stages, setStages] = useState<CaseStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generatingCode, setGeneratingCode] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const clientDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
-      setForm({ ...empty, client_id: defaultClientId ?? '' });
+      setForm({ ...empty(), client_id: defaultClientId ?? '' });
       setClientSearch('');
       setClientDropdownOpen(false);
       if (tenantId) {
@@ -64,7 +68,7 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
     setLoading(true);
     try {
       await onSubmit(form);
-      setForm(empty);
+      setForm(empty());
       onClose();
     } catch (err: any) {
       setError(err?.message ?? 'Αποτυχία δημιουργίας υπόθεσης.');
@@ -91,14 +95,33 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
               <label className="block text-sm text-text-secondary mb-1">
                 Κωδικός <span className="text-danger">*</span>
               </label>
-              <input
-                className="input w-full"
-                value={form.code}
-                onChange={set('code')}
-                required
-                autoFocus
-                placeholder="π.χ. Α60α"
-              />
+              <div className="flex gap-1.5">
+                <input
+                  className="input flex-1 min-w-0"
+                  value={form.code}
+                  onChange={set('code')}
+                  required
+                  autoFocus
+                  placeholder="π.χ. Α60α"
+                />
+                <button
+                  type="button"
+                  title="Αυτόματος κωδικός"
+                  disabled={generatingCode}
+                  onClick={async () => {
+                    setGeneratingCode(true);
+                    try {
+                      const code = await nextCaseCode(tenantId);
+                      setForm((f) => ({ ...f, code }));
+                    } finally {
+                      setGeneratingCode(false);
+                    }
+                  }}
+                  className="px-2.5 flex items-center justify-center rounded-lg border border-border/20 bg-surface-hover hover:bg-border/10 text-text-secondary hover:text-primary transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {generatingCode ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-sm text-text-secondary mb-1">Κατάσταση</label>
@@ -109,6 +132,16 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
               </select>
             </div>
           </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Ημερομηνία Καταχώρησης</label>
+            <input
+              type="date"
+              className="input w-full"
+              value={form.created_at}
+              onChange={set('created_at')}
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-text-secondary mb-1">Τύπος Υπόθεσης</label>

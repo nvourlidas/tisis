@@ -68,6 +68,16 @@ export async function deleteStage(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function nextCaseCode(tenantId: string): Promise<string> {
+  const { data } = await supabase
+    .from('cases')
+    .select('code')
+    .eq('tenant_id', tenantId);
+  const codes = (data ?? []).map((r: any) => r.code).filter((c: string) => /^\d{4,}$/.test(c)).map(Number);
+  const max = codes.length > 0 ? Math.max(...codes) : 999;
+  return String(Math.max(max + 1, 1000));
+}
+
 export async function createCase(_tenantId: string, form: CaseFormData): Promise<Case> {
   const { data, error } = await supabase.functions.invoke('case-create', { body: form });
   if (error) throw error;

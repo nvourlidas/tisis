@@ -1,15 +1,15 @@
 /**
  * google-calendar-import
  *
- * Pulls events from the tenant's "TISIS Tasks" Google Calendar and creates
- * tasks in Supabase for any event not already linked to a task.
+ * Uses Google Calendar incremental sync (syncToken). Events are upserted
+ * page-by-page (250 at a time) to keep memory flat regardless of calendar size.
  *
  * Body params:
- *   timeMin? — ISO date string, defaults to today (events from this date forward)
- *   calendarId? — override calendar ID (defaults to tenant's stored google_calendar_id)
+ *   fullSync? — boolean, forces a full re-sync and clears the stored syncToken
+ *   calendarId? — override calendar ID
  *
  * Returns:
- *   { imported: number, skipped: number, tasks: Task[] }
+ *   { imported: number }
  */
 
 import { corsHeaders, json, authenticate } from '../_shared/auth.ts'
@@ -36,17 +36,74 @@ async function getAccessToken(refreshToken: string): Promise<string> {
   return data.access_token
 }
 
-async function fetchAllEvents(accessToken: string, calendarId: string, timeMin: string): Promise<any[]> {
-  const events: any[] = []
+class SyncTokenExpiredError extends Error {}
+
+function extractDate(event: any): string | null {
+  const raw = event.start?.dateTime ?? event.start?.date
+  if (!raw) return null
+  return raw.split('T')[0]
+}
+
+async function processPage(
+  supabase: any,
+  tenantId: string,
+  items: any[],
+): Promise<number> {
+  const toUpsert = items.filter((e) => e.status !== 'cancelled' && e.summary)
+  const toCancelIds = items.filter((e) => e.status === 'cancelled').map((e) => e.id)
+
+  if (toCancelIds.length > 0) {
+    await supabase
+      .from('tasks')
+      .update({ status: 'done' })
+      .eq('tenant_id', tenantId)
+      .in('google_event_id', toCancelIds)
+  }
+
+  if (toUpsert.length === 0) return 0
+
+  const rows = toUpsert.map((e) => ({
+    tenant_id: tenantId,
+    title: e.summary,
+    description: e.description ?? null,
+    due_date: extractDate(e),
+    status: 'open',
+    google_event_id: e.id,
+  }))
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .upsert(rows, { onConflict: 'google_event_id', ignoreDuplicates: false })
+    .select('id')
+
+  if (error) throw new Error(error.message)
+  return data?.length ?? 0
+}
+
+async function syncCalendar(
+  accessToken: string,
+  calendarId: string,
+  syncToken: string | null,
+  supabase: any,
+  tenantId: string,
+): Promise<{ nextSyncToken: string | undefined; totalImported: number }> {
   let pageToken: string | undefined
+  let nextSyncToken: string | undefined
+  let totalImported = 0
+
+  // For full sync, only go back 5 years — existing rows are already in DB.
+  // Subsequent runs use syncToken and only fetch changes (fast).
+  const fiveYearsAgo = new Date()
+  fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
+  const defaultTimeMin = fiveYearsAgo.toISOString()
+
+  const baseParams: Record<string, string> = syncToken
+    ? { syncToken }
+    : { timeMin: defaultTimeMin, singleEvents: 'true', orderBy: 'startTime' }
 
   do {
-    const params = new URLSearchParams({
-      timeMin,
-      singleEvents: 'true',
-      orderBy: 'startTime',
-      maxResults: '250',
-    })
+    // 2500 is Google Calendar API's max page size — 10x fewer round trips than 250
+    const params = new URLSearchParams({ ...baseParams, maxResults: '2500' })
     if (pageToken) params.set('pageToken', pageToken)
 
     const res = await fetch(
@@ -54,19 +111,20 @@ async function fetchAllEvents(accessToken: string, calendarId: string, timeMin: 
       { headers: { Authorization: `Bearer ${accessToken}` } },
     )
     const data = await res.json()
+
+    if (res.status === 410) throw new SyncTokenExpiredError()
     if (!res.ok) throw new Error(data.error?.message ?? 'Failed to fetch calendar events')
 
-    events.push(...(data.items ?? []))
+    // Process and upsert this page immediately — keeps memory flat
+    if ((data.items ?? []).length > 0) {
+      totalImported += await processPage(supabase, tenantId, data.items)
+    }
+
     pageToken = data.nextPageToken
+    if (!pageToken) nextSyncToken = data.nextSyncToken
   } while (pageToken)
 
-  return events
-}
-
-function extractDate(event: any): string | null {
-  const raw = event.start?.dateTime ?? event.start?.date
-  if (!raw) return null
-  return raw.split('T')[0]
+  return { nextSyncToken, totalImported }
 }
 
 Deno.serve(async (req) => {
@@ -77,11 +135,11 @@ Deno.serve(async (req) => {
     const { tenantId, supabase } = auth
 
     const body = await req.json().catch(() => ({}))
-    const timeMin = body.timeMin ?? new Date().toISOString()
+    const forceFullSync: boolean = body.fullSync === true
 
     const { data: tokenRow } = await supabase
       .from('tenant_google_tokens')
-      .select('refresh_token, google_calendar_id')
+      .select('refresh_token, google_calendar_id, google_sync_token')
       .eq('tenant_id', tenantId)
       .maybeSingle()
 
@@ -91,46 +149,27 @@ Deno.serve(async (req) => {
     if (!calendarId) return json({ error: 'No Google Calendar linked to this tenant' }, 400)
 
     const accessToken = await getAccessToken(tokenRow.refresh_token)
-    const events = await fetchAllEvents(accessToken, calendarId, timeMin)
+    const storedSyncToken: string | null = forceFullSync ? null : (tokenRow.google_sync_token ?? null)
 
-    // Fetch existing google_event_ids so we don't double-import
-    const { data: existingTasks } = await supabase
-      .from('tasks')
-      .select('google_event_id')
-      .eq('tenant_id', tenantId)
-      .not('google_event_id', 'is', null)
-
-    const existingEventIds = new Set((existingTasks ?? []).map((t: any) => t.google_event_id))
-
-    const toImport = events.filter(
-      (e) => e.status !== 'cancelled' && e.summary && !existingEventIds.has(e.id),
-    )
-
-    if (toImport.length === 0) {
-      return json({ imported: 0, skipped: events.length, tasks: [] })
+    let result: { nextSyncToken: string | undefined; totalImported: number }
+    try {
+      result = await syncCalendar(accessToken, calendarId, storedSyncToken, supabase, tenantId)
+    } catch (e) {
+      if (e instanceof SyncTokenExpiredError) {
+        result = await syncCalendar(accessToken, calendarId, null, supabase, tenantId)
+      } else {
+        throw e
+      }
     }
 
-    const rows = toImport.map((e) => ({
-      tenant_id: tenantId,
-      title: e.summary,
-      description: e.description ?? null,
-      due_date: extractDate(e),
-      status: 'open',
-      google_event_id: e.id,
-    }))
+    if (result.nextSyncToken) {
+      await supabase
+        .from('tenant_google_tokens')
+        .update({ google_sync_token: result.nextSyncToken })
+        .eq('tenant_id', tenantId)
+    }
 
-    const { data: inserted, error } = await supabase
-      .from('tasks')
-      .insert(rows)
-      .select()
-
-    if (error) return json({ error: error.message }, 400)
-
-    return json({
-      imported: inserted?.length ?? 0,
-      skipped: events.length - toImport.length,
-      tasks: inserted,
-    })
+    return json({ imported: result.totalImported })
   } catch (e: any) {
     console.error('google-calendar-import error:', e.message)
     return json({ error: e.message }, 500)

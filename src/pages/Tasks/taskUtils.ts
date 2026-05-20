@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 
 export const TASK_CATEGORIES = {
   legal_act: 'Νομικές Πράξεις',
+  lawsuit: 'Αγωγή/Αίτηση/Προσφυγή/κτλ.',
   extrajudicial: 'Εξοδικαστηκές Ενέργιες',
   appointment: 'Επαγγελματικά Ραντεβού',
   file_work: 'Εργασία Φακέλου',
@@ -26,6 +27,14 @@ export type AppointmentData = {
 
 export type TaskExpense = { description: string; amount: number };
 
+export type LinkedTask = {
+  id: string;
+  title: string;
+  due_date: string | null;
+  status: 'open' | 'done';
+  category: TaskCategory | null;
+};
+
 export type Task = {
   id: string;
   tenant_id: string;
@@ -44,16 +53,40 @@ export type Task = {
   case_code?: string | null;
   case_title?: string | null;
   client_name?: string | null;
+  linked_tasks?: LinkedTask[];
 };
 
-export async function fetchAllTasks(tenantId: string): Promise<Task[]> {
+export async function fetchTask(id: string): Promise<Task | null> {
   const { data, error } = await supabase
     .from('tasks')
     .select('*, cases(code, title, clients(name))')
-    .eq('tenant_id', tenantId)
-    .order('due_date', { ascending: true, nullsFirst: false });
-  if (error) throw error;
-  return (data ?? []).map((r: any) => ({
+    .eq('id', id)
+    .single();
+  if (error || !data) return null;
+  return mapTask(data);
+}
+
+export async function fetchAllTasks(tenantId: string): Promise<Task[]> {
+  const PAGE = 1000;
+  let all: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*, cases(code, title, clients(name))')
+      .eq('tenant_id', tenantId)
+      .order('due_date', { ascending: true, nullsFirst: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    all = all.concat(data ?? []);
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all.map(mapTask);
+}
+
+function mapTask(r: any): Task {
+  return {
     ...r,
     due_date: r.due_date ? r.due_date.slice(0, 10) : null,
     case_code: r.cases?.code ?? null,
@@ -63,7 +96,81 @@ export async function fetchAllTasks(tenantId: string): Promise<Task[]> {
     extra_data: r.extra_data ?? null,
     fee: r.fee ?? null,
     expenses: r.expenses ?? null,
-  }));
+  };
+}
+
+// Fetch tasks visible for a given month: the month itself + open tasks with no due date.
+// Also includes overdue open tasks so the calendar can show them when navigating back.
+export async function fetchTasksForMonth(
+  tenantId: string,
+  year: number,
+  month: number,
+): Promise<{ tasks: Task[]; noDueDateTasks: Task[] }> {
+  const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  const PAGE = 1000;
+  const fetchPage = async (from: number, to: string | null, dateField: string) => {
+    let q = supabase
+      .from('tasks')
+      .select('*, cases(code, title, clients(name))')
+      .eq('tenant_id', tenantId)
+      .order('due_date', { ascending: true, nullsFirst: false })
+      .range(from, from + PAGE - 1);
+    if (to) q = q.gte('due_date', monthStart).lte('due_date', monthEnd);
+    else q = q.is('due_date', null).eq('status', 'open');
+    return q;
+  };
+
+  // Fetch tasks with due_date in this month (paginated)
+  const inMonth: any[] = [];
+  let fromIdx = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*, cases(code, title, clients(name))')
+      .eq('tenant_id', tenantId)
+      .gte('due_date', monthStart)
+      .lte('due_date', monthEnd)
+      .order('due_date', { ascending: true })
+      .range(fromIdx, fromIdx + PAGE - 1);
+    if (error) throw error;
+    inMonth.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+    fromIdx += PAGE;
+  }
+
+  // Fetch open tasks with no due date (paginated)
+  const noDue: any[] = [];
+  fromIdx = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*, cases(code, title, clients(name))')
+      .eq('tenant_id', tenantId)
+      .is('due_date', null)
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      .range(fromIdx, fromIdx + PAGE - 1);
+    if (error) throw error;
+    noDue.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+    fromIdx += PAGE;
+  }
+
+  return {
+    tasks: inMonth.map(mapTask),
+    noDueDateTasks: noDue.map(mapTask),
+  };
+}
+
+export async function fetchTaskCounts(tenantId: string): Promise<{ open: number; done: number }> {
+  const [{ count: open }, { count: done }] = await Promise.all([
+    supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'open'),
+    supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'done'),
+  ]);
+  return { open: open ?? 0, done: done ?? 0 };
 }
 
 export async function completeTask(id: string): Promise<void> {
@@ -85,9 +192,54 @@ export async function updateTask(form: {
   extra_data?: object | null;
   fee?: number | null;
   expenses?: TaskExpense[] | null;
+  linked_task_ids?: string[];
 }): Promise<void> {
   const { error } = await supabase.functions.invoke('task-update', { body: form });
   if (error) throw error;
+}
+
+export async function searchFullTasks(tenantId: string, query: string): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*, cases(code, title, clients(name))')
+    .eq('tenant_id', tenantId)
+    .ilike('title', `%${query}%`)
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .limit(50);
+  if (error) throw error;
+  return (data ?? []).map(mapTask);
+}
+
+export async function searchTasks(tenantId: string, query: string, excludeId?: string): Promise<LinkedTask[]> {
+  let q = supabase
+    .from('tasks')
+    .select('id, title, due_date, status, category')
+    .eq('tenant_id', tenantId)
+    .ilike('title', `%${query}%`)
+    .limit(10);
+  if (excludeId) q = q.neq('id', excludeId);
+  const { data } = await q;
+  return (data ?? []).map(r => ({
+    id: r.id,
+    title: r.title,
+    due_date: r.due_date ? r.due_date.slice(0, 10) : null,
+    status: r.status,
+    category: r.category ?? null,
+  }));
+}
+
+export async function fetchLinkedTasks(taskId: string): Promise<LinkedTask[]> {
+  const { data } = await supabase
+    .from('task_links')
+    .select('linked_task:tasks!task_links_linked_task_id_fkey(id, title, due_date, status, category)')
+    .eq('task_id', taskId);
+  return (data ?? []).map((r: any) => ({
+    id: r.linked_task.id,
+    title: r.linked_task.title,
+    due_date: r.linked_task.due_date ? r.linked_task.due_date.slice(0, 10) : null,
+    status: r.linked_task.status,
+    category: r.linked_task.category ?? null,
+  }));
 }
 
 export async function createTask(_tenantId: string, form: {
@@ -99,9 +251,11 @@ export async function createTask(_tenantId: string, form: {
   extra_data?: object | null;
   fee?: number | null;
   expenses?: TaskExpense[] | null;
-}): Promise<void> {
-  const { error } = await supabase.functions.invoke('task-create', { body: form });
+  linked_task_ids?: string[];
+}): Promise<{ id: string }> {
+  const { data, error } = await supabase.functions.invoke('task-create', { body: form });
   if (error) throw error;
+  return data;
 }
 
 const today = () => new Date().toISOString().slice(0, 10);

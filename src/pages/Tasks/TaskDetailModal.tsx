@@ -60,7 +60,7 @@ export default function TaskDetailModal({ task, onClose, onNavigateToCase }: Pro
             }`}>
               {isDone && <Check className="h-3 w-3" />}
             </div>
-            <h2 className={`text-base font-semibold leading-tight ${isDone ? 'line-through text-text-secondary' : 'text-text-primary'}`}>
+            <h2 className={`text-base font-semibold leading-tight ${isDone ? 'text-text-secondary' : 'text-text-primary'}`}>
               {task.title}
             </h2>
           </div>
