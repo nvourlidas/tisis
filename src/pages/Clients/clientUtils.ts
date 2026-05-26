@@ -2,13 +2,22 @@ import { supabase } from '../../lib/supabase';
 import type { Client, ClientFormData } from './types';
 
 export async function fetchClients(tenantId: string): Promise<Client[]> {
-  const { data, error } = await supabase
-    .from('clients')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('name');
-  if (error) throw error;
-  return data ?? [];
+  const BATCH = 1000;
+  const all: Client[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('name')
+      .range(from, from + BATCH - 1);
+    if (error) throw error;
+    all.push(...(data ?? []));
+    if (!data || data.length < BATCH) break;
+    from += BATCH;
+  }
+  return all;
 }
 
 export async function fetchClient(id: string): Promise<Client | null> {

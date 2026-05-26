@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 export const TASK_CATEGORIES = {
   legal_act: 'Νομικές Πράξεις',
   lawsuit: 'Αγωγή/Αίτηση/Προσφυγή/κτλ.',
-  extrajudicial: 'Εξοδικαστηκές Ενέργιες',
+  extrajudicial: 'Εξωδικαστικές Ενέργειες',
   appointment: 'Επαγγελματικά Ραντεβού',
   file_work: 'Εργασία Φακέλου',
   court: 'Δικαστήριο',
@@ -111,17 +111,6 @@ export async function fetchTasksForMonth(
   const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
   const PAGE = 1000;
-  const fetchPage = async (from: number, to: string | null, dateField: string) => {
-    let q = supabase
-      .from('tasks')
-      .select('*, cases(code, title, clients(name))')
-      .eq('tenant_id', tenantId)
-      .order('due_date', { ascending: true, nullsFirst: false })
-      .range(from, from + PAGE - 1);
-    if (to) q = q.gte('due_date', monthStart).lte('due_date', monthEnd);
-    else q = q.is('due_date', null).eq('status', 'open');
-    return q;
-  };
 
   // Fetch tasks with due_date in this month (paginated)
   const inMonth: any[] = [];
@@ -165,6 +154,21 @@ export async function fetchTasksForMonth(
   };
 }
 
+// Fetch only tasks needed for dashboard widgets: overdue + today open tasks.
+// Avoids loading the full task table (can be 30k+ rows).
+export async function fetchDashboardOpenTasks(tenantId: string): Promise<Task[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*, cases(code, title, clients(name))')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'open')
+    .lte('due_date', today)
+    .order('due_date', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(mapTask);
+}
+
 export async function fetchTaskCounts(tenantId: string): Promise<{ open: number; done: number }> {
   const [{ count: open }, { count: done }] = await Promise.all([
     supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'open'),
@@ -183,11 +187,17 @@ export async function reopenTask(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function deleteTask(id: string): Promise<void> {
+  const { error } = await supabase.from('tasks').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function updateTask(form: {
   id: string;
   title: string;
   description: string;
   due_date: string;
+  case_id?: string | null;
   category?: string;
   extra_data?: object | null;
   fee?: number | null;
@@ -216,7 +226,7 @@ export async function searchTasks(tenantId: string, query: string, excludeId?: s
     .select('id, title, due_date, status, category')
     .eq('tenant_id', tenantId)
     .ilike('title', `%${query}%`)
-    .limit(10);
+    .limit(200);
   if (excludeId) q = q.neq('id', excludeId);
   const { data } = await q;
   return (data ?? []).map(r => ({
@@ -256,6 +266,58 @@ export async function createTask(_tenantId: string, form: {
   const { data, error } = await supabase.functions.invoke('task-create', { body: form });
   if (error) throw error;
   return data;
+}
+
+// ── Task Payments ─────────────────────────────────────────────────────────────
+
+export type TaskPayment = {
+  id: string;
+  task_id: string;
+  amount: number;
+  paid_at: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export async function fetchTaskPayments(taskId: string): Promise<TaskPayment[]> {
+  const { data, error } = await supabase
+    .from('task_payments')
+    .select('*')
+    .eq('task_id', taskId)
+    .order('paid_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(r => ({ ...r, paid_at: r.paid_at.slice(0, 10) }));
+}
+
+export async function createTaskPayment(
+  tenantId: string,
+  taskId: string,
+  payment: { amount: number; paid_at: string; notes?: string },
+): Promise<void> {
+  const { error } = await supabase.from('task_payments').insert({
+    tenant_id: tenantId,
+    task_id: taskId,
+    amount: payment.amount,
+    paid_at: payment.paid_at,
+    notes: payment.notes ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function deleteTaskPayment(id: string): Promise<void> {
+  const { error } = await supabase.from('task_payments').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchTaskPaymentsForTasks(taskIds: string[]): Promise<TaskPayment[]> {
+  if (taskIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('task_payments')
+    .select('*')
+    .in('task_id', taskIds)
+    .order('paid_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(r => ({ ...r, paid_at: r.paid_at.slice(0, 10) }));
 }
 
 const today = () => new Date().toISOString().slice(0, 10);

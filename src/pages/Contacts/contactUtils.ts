@@ -3,13 +3,22 @@ import type { Contact, ContactFormData, ContactCase } from './types';
 import type { Client } from '../Clients/types';
 
 export async function fetchContacts(tenantId: string): Promise<Contact[]> {
-  const { data, error } = await supabase
-    .from('contacts')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('name');
-  if (error) throw error;
-  return data ?? [];
+  const BATCH = 1000;
+  const all: Contact[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('name')
+      .range(from, from + BATCH - 1);
+    if (error) throw error;
+    all.push(...(data ?? []));
+    if (!data || data.length < BATCH) break;
+    from += BATCH;
+  }
+  return all;
 }
 
 export async function fetchContact(id: string): Promise<Contact | null> {

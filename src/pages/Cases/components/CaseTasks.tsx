@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Check, RotateCcw, X, AlertCircle, ChevronLeft, ChevronRight, Pencil, Search } from 'lucide-react';
+import { Plus, Check, RotateCcw, X, AlertCircle, ChevronLeft, ChevronRight, Pencil, Search, Trash2 } from 'lucide-react';
 import { fetchCaseTasks, completeTask, reopenTask } from '../caseUtils';
-import { updateTask, TASK_CATEGORIES, type TaskCategory, type LegalActData, type AppointmentData, type TaskExpense } from '../../Tasks/taskUtils';
+import { updateTask, deleteTask, TASK_CATEGORIES, type TaskCategory, type LegalActData, type AppointmentData, type TaskExpense } from '../../Tasks/taskUtils';
 import { supabase } from '../../../lib/supabase';
 import TaskForm, { type TaskFormValues } from '../../Tasks/TaskForm';
 import type { CaseTask } from '../types';
@@ -28,6 +28,7 @@ function weekStart(dateStr: string): string {
 
 const CATEGORY_COLORS: Record<TaskCategory, string> = {
   legal_act:    'bg-blue-500/15 text-blue-500',
+  lawsuit:      'bg-orange-500/15 text-orange-500',
   extrajudicial:'bg-purple-500/15 text-purple-500',
   appointment:  'bg-teal-500/15 text-teal-500',
   file_work:    'bg-amber-500/15 text-amber-500',
@@ -63,6 +64,12 @@ export default function CaseTasks({ caseId }: Props) {
   const load = () => {
     setLoading(true);
     fetchCaseTasks(caseId).then(setTasks).finally(() => setLoading(false));
+  };
+
+  const doDeleteTask = async (t: CaseTask) => {
+    if (!confirm('Διαγραφή εργασίας; Η ενέργεια δεν αναιρείται.')) return;
+    await deleteTask(t.id);
+    load();
   };
 
   useEffect(() => { load(); }, [caseId]);
@@ -114,6 +121,7 @@ export default function CaseTasks({ caseId }: Props) {
         title: values.title,
         description: values.description,
         due_date: values.due_date,
+        case_id: values.case_id || caseId,
         category: values.category || undefined,
         extra_data: values.extra_data,
         fee: values.fee,
@@ -222,6 +230,7 @@ export default function CaseTasks({ caseId }: Props) {
     extra_data: t.extra_data ?? null,
     fee: t.fee ?? null,
     expenses: t.expenses ?? [],
+    linked_task_ids: [],
   });
 
   return (
@@ -308,7 +317,7 @@ export default function CaseTasks({ caseId }: Props) {
             <p className="text-sm text-text-secondary py-4 text-center">Δεν βρέθηκαν εργασίες.</p>
           ) : (
             filteredTasks.map(task => (
-              <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+              <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
             ))
           )}
         </div>
@@ -388,7 +397,7 @@ export default function CaseTasks({ caseId }: Props) {
                   ) : (
                     <div className="space-y-2">
                       {selectedTasks.map(task => (
-                        <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                        <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                       ))}
                     </div>
                   )}
@@ -441,7 +450,7 @@ export default function CaseTasks({ caseId }: Props) {
                 ) : (
                   <div className="space-y-2">
                     {(tasksByDay.get(anchor) ?? []).map(task => (
-                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                     ))}
                   </div>
                 )}
@@ -456,7 +465,7 @@ export default function CaseTasks({ caseId }: Props) {
                 ) : (
                   <div className="space-y-2">
                     {(tasksByDay.get(anchor) ?? []).map(task => (
-                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                     ))}
                   </div>
                 )}
@@ -469,7 +478,7 @@ export default function CaseTasks({ caseId }: Props) {
               <h3 className="text-sm font-semibold text-text-secondary">Χωρίς προθεσμία ({noDueDateTasks.length})</h3>
               <div className="space-y-2">
                 {noDueDateTasks.map(task => (
-                  <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                  <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                 ))}
               </div>
             </div>
@@ -520,12 +529,13 @@ function EditTaskModal({ task, saving, error, initialValues, onSubmit, onClose }
 
 // ── Task row ──────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
+function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavigate }: {
   task: CaseTask;
   todayStr: string;
   toggling: string | null;
   onToggle: (t: CaseTask) => void;
   onEdit: (t: CaseTask) => void;
+  onDelete: (t: CaseTask) => void;
   onNavigate: (path: string) => void;
 }) {
   const overdue = task.status === 'open' && !!task.due_date && task.due_date < todayStr;
@@ -569,6 +579,10 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
           <button onClick={() => onEdit(task)}
             className="p-1 rounded hover:bg-white/5 text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
             <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => onDelete(task)}
+            className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger transition-colors cursor-pointer">
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>

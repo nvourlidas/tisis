@@ -7,15 +7,24 @@ function mapCase(r: any): Case {
 }
 
 export async function fetchCases(tenantId: string, status?: CaseStatus): Promise<Case[]> {
-  let q = supabase
-    .from('cases')
-    .select(CASE_SELECT)
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false });
-  if (status) q = q.eq('status', status);
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []).map(mapCase);
+  const BATCH = 1000;
+  const all: Case[] = [];
+  let from = 0;
+  while (true) {
+    let q = supabase
+      .from('cases')
+      .select(CASE_SELECT)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .range(from, from + BATCH - 1);
+    if (status) q = q.eq('status', status);
+    const { data, error } = await q;
+    if (error) throw error;
+    all.push(...(data ?? []).map(mapCase));
+    if (!data || data.length < BATCH) break;
+    from += BATCH;
+  }
+  return all;
 }
 
 export async function fetchCase(id: string): Promise<Case | null> {

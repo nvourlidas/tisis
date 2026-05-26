@@ -54,6 +54,10 @@
     @apply h-9 w-full rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary;
   }
 
+  textarea.input {
+    @apply h-auto min-h-28 py-2 resize-y;
+  }
+
   .btn-primary {
     @apply h-9 rounded-md px-3 text-sm bg-primary text-white hover:bg-primary/90;
   }

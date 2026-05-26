@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Check, Clock, Tag, CalendarDays, Briefcase, User,
-  Euro, Receipt, Link2, Pencil, RotateCcw, AlertCircle, X,
+  Euro, Receipt, Link2, Pencil, RotateCcw, AlertCircle, X, Plus, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { formatDate } from '../../lib/dateUtils';
 import {
   fetchTask, fetchLinkedTasks, completeTask, reopenTask, updateTask,
+  fetchTaskPayments, createTaskPayment, deleteTaskPayment,
   TASK_CATEGORIES,
-  type Task, type LinkedTask, type LegalActData, type AppointmentData,
+  type Task, type LinkedTask, type LegalActData, type AppointmentData, type TaskPayment,
 } from './taskUtils';
 import TaskForm, { taskToFormValues, type TaskFormValues } from './TaskForm';
 
@@ -21,18 +22,28 @@ export default function TaskDetail() {
 
   const [task, setTask] = useState<Task | null>(null);
   const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
+  const [payments, setPayments] = useState<TaskPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // payment form state
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [addingPayment, setAddingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+
   const load = async () => {
     if (!id) return;
     setLoading(true);
-    const [t, links] = await Promise.all([fetchTask(id), fetchLinkedTasks(id)]);
+    const [t, links, pays] = await Promise.all([fetchTask(id), fetchLinkedTasks(id), fetchTaskPayments(id)]);
     setTask(t);
     setLinkedTasks(links);
+    setPayments(pays);
     setLoading(false);
   };
 
@@ -50,6 +61,34 @@ export default function TaskDetail() {
     }
   };
 
+  const handleAddPayment = async () => {
+    if (!task || !paymentAmount) return;
+    const amt = parseFloat(paymentAmount);
+    if (isNaN(amt) || amt <= 0) { setPaymentError('Μη έγκυρο ποσό.'); return; }
+    setAddingPayment(true);
+    setPaymentError(null);
+    try {
+      await createTaskPayment(tenantId, task.id, { amount: amt, paid_at: paymentDate, notes: paymentNotes || undefined });
+      setPaymentAmount('');
+      setPaymentNotes('');
+      setPaymentDate(new Date().toISOString().slice(0, 10));
+      setShowPaymentForm(false);
+      const pays = await fetchTaskPayments(task.id);
+      setPayments(pays);
+    } catch (e: any) {
+      setPaymentError(e?.message ?? 'Αποτυχία αποθήκευσης.');
+    } finally {
+      setAddingPayment(false);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!task) return;
+    await deleteTaskPayment(paymentId);
+    const pays = await fetchTaskPayments(task.id);
+    setPayments(pays);
+  };
+
   const handleUpdate = async (values: TaskFormValues) => {
     if (!task) return;
     setSaving(true);
@@ -60,6 +99,7 @@ export default function TaskDetail() {
         title: values.title,
         description: values.description,
         due_date: values.due_date,
+        case_id: values.case_id || null,
         category: values.category || undefined,
         extra_data: values.extra_data,
         fee: values.fee,
@@ -106,16 +146,16 @@ export default function TaskDetail() {
   const totalExpenses = task.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 
       {/* Back */}
-      <button onClick={() => navigate('/tasks')} className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary cursor-pointer transition-colors animate-fade-in">
+      <button onClick={() => navigate('/tasks')} className="md:col-span-2 flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary cursor-pointer transition-colors animate-fade-in">
         <ArrowLeft className="h-4 w-4" />
         Εργασίες
       </button>
 
       {/* Header card */}
-      <div className="animate-fade-in-up rounded-2xl border border-border/10 bg-secondary-background p-6 space-y-4">
+      <div className="md:col-span-2 animate-fade-in-up rounded-2xl border border-border/10 bg-secondary-background p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 min-w-0">
             <button
@@ -283,6 +323,110 @@ export default function TaskDetail() {
               </div>
             )}
           </div>
+        </Section>
+      )}
+
+      {/* Payments */}
+      {task.fee != null && task.fee > 0 && (
+        <Section title="Πληρωμές" icon={<Euro className="h-4 w-4" />}>
+          {(() => {
+            const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
+            const remaining = task.fee - totalPaid;
+            return (
+              <div className="space-y-4">
+                {/* Summary bar */}
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-text-secondary">Σύνολο: <strong className="text-text-primary">{task.fee.toFixed(2)} €</strong></span>
+                  <span className="text-green-500">Πληρωμένο: <strong>{totalPaid.toFixed(2)} €</strong></span>
+                  <span className={remaining > 0 ? 'text-orange-400' : 'text-green-500'}>
+                    Υπόλοιπο: <strong>{remaining.toFixed(2)} €</strong>
+                  </span>
+                </div>
+                {/* Progress bar */}
+                <div className="h-2 rounded-full bg-border/20 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-green-500 transition-all"
+                    style={{ width: `${Math.min(100, (totalPaid / task.fee) * 100)}%` }}
+                  />
+                </div>
+                {/* Payment list */}
+                {payments.length > 0 && (
+                  <div className="space-y-1">
+                    {payments.map(p => (
+                      <div key={p.id} className="flex items-center gap-3 rounded-lg px-3 py-2 bg-white/3 hover:bg-white/5 group">
+                        <span className="text-xs text-text-secondary w-24 shrink-0">{p.paid_at}</span>
+                        <span className="text-sm font-semibold text-green-500 w-20 shrink-0">{p.amount.toFixed(2)} €</span>
+                        <span className="text-xs text-text-secondary flex-1 truncate">{p.notes ?? ''}</span>
+                        <button
+                          onClick={() => handleDeletePayment(p.id)}
+                          className="opacity-0 group-hover:opacity-100 text-text-secondary hover:text-red-400 transition-all cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Add payment form */}
+                {showPaymentForm ? (
+                  <div className="space-y-3 rounded-xl border border-border/20 bg-white/3 p-4">
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className="text-[10px] text-text-secondary uppercase tracking-wider mb-1 block">Ποσό (€)</label>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={paymentAmount}
+                          onChange={e => setPaymentAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full rounded-lg border border-border/20 bg-background px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[10px] text-text-secondary uppercase tracking-wider mb-1 block">Ημερομηνία</label>
+                        <input
+                          type="date"
+                          value={paymentDate}
+                          onChange={e => setPaymentDate(e.target.value)}
+                          className="w-full rounded-lg border border-border/20 bg-background px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-text-secondary uppercase tracking-wider mb-1 block">Σημειώσεις</label>
+                      <input
+                        type="text"
+                        value={paymentNotes}
+                        onChange={e => setPaymentNotes(e.target.value)}
+                        placeholder="Προαιρετικό"
+                        className="w-full rounded-lg border border-border/20 bg-background px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40"
+                      />
+                    </div>
+                    {paymentError && <p className="text-xs text-red-400">{paymentError}</p>}
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => { setShowPaymentForm(false); setPaymentError(null); }} className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary cursor-pointer">Άκυρο</button>
+                      <button
+                        onClick={handleAddPayment}
+                        disabled={addingPayment}
+                        className="px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
+                      >
+                        {addingPayment ? 'Αποθήκευση…' : 'Αποθήκευση'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowPaymentForm(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Προσθήκη Πληρωμής
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </Section>
       )}
 

@@ -7,6 +7,7 @@ export type ColumnDef<T> = {
   render: (row: T) => React.ReactNode;
   sortValue?: (row: T) => string | number | null | undefined;
   defaultVisible?: boolean;
+  alwaysVisible?: boolean;
   className?: string;
   headerClassName?: string;
 };
@@ -95,7 +96,7 @@ export default function DataTable<T>({
     });
   };
 
-  const visibleCols = columns.filter((c) => visibleKeys.has(c.key));
+  const visibleCols = columns.filter((c) => c.alwaysVisible || visibleKeys.has(c.key));
 
   const sorted = [...data].sort((a, b) => {
     if (!sortKey) return 0;
@@ -128,7 +129,7 @@ export default function DataTable<T>({
           </button>
           {colMenuOpen && (
             <div className="absolute right-0 top-full mt-1 z-50 min-w-44 rounded-xl border border-border/10 bg-secondary-background shadow-xl py-1">
-              {columns.map((col) => (
+              {columns.filter((c) => !c.alwaysVisible).map((col) => (
                 <label
                   key={col.key}
                   className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/5 cursor-pointer select-none"

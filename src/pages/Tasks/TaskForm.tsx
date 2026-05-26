@@ -380,7 +380,7 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
                 />
                 {searchingTasks && <p className="text-xs text-text-secondary px-1">Αναζήτηση…</p>}
                 {taskOptions.length > 0 && (
-                  <div className="rounded-lg border border-border/10 overflow-hidden divide-y divide-border/10">
+                  <div className="rounded-lg border border-border/10 overflow-hidden divide-y divide-border/10 max-h-64 overflow-y-auto">
                     {taskOptions.map(t => (
                       <button key={t.id} type="button"
                         onClick={() => {

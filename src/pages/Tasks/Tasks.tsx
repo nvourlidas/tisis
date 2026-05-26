@@ -2,16 +2,17 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, RotateCcw, AlertCircle,
-  X, ChevronLeft, ChevronRight, Pencil, RefreshCw, Link2, Search, Phone, Users,
+  X, ChevronLeft, ChevronRight, Pencil, RefreshCw, Link2, Search, Phone, Users, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { supabase } from '../../lib/supabase';
 import {
-  fetchTasksForMonth, fetchTaskCounts, completeTask, reopenTask, createTask, updateTask,
+  fetchTasksForMonth, fetchTaskCounts, completeTask, reopenTask, createTask, updateTask, deleteTask,
   searchFullTasks,
   TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData,
 } from './taskUtils';
-import { fetchCallsForMonth } from '../Calls/callUtils';
+import { fetchCallsForMonth, deleteCall, searchCalls } from '../Calls/callUtils';
+import EditCallModal from '../Calls/modals/EditCallModal';
 import type { Call } from '../Calls/types';
 import TaskForm, { type TaskFormValues, taskToFormValues } from './TaskForm';
 
@@ -87,6 +88,13 @@ export default function Tasks() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingCall, setEditingCall] = useState<Call | null>(null);
+
+  const doDeleteTask = async (t: Task) => {
+    if (!confirm('Διαγραφή εργασίας; Η ενέργεια δεν αναιρείται.')) return;
+    await deleteTask(t.id);
+    load(year, month);
+  };
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -94,14 +102,21 @@ export default function Tasks() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Task[]>([]);
+  const [searchCallResults, setSearchCallResults] = useState<Call[]>([]);
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
-    if (!searchQuery.trim() || !tenantId) { setSearchResults([]); return; }
+    if (!searchQuery.trim() || !tenantId) { setSearchResults([]); setSearchCallResults([]); return; }
     const t = setTimeout(async () => {
       setSearching(true);
-      try { setSearchResults(await searchFullTasks(tenantId, searchQuery.trim())); }
-      finally { setSearching(false); }
+      try {
+        const [tasks, calls] = await Promise.all([
+          searchFullTasks(tenantId, searchQuery.trim()),
+          searchCalls(tenantId, searchQuery.trim()),
+        ]);
+        setSearchResults(tasks);
+        setSearchCallResults(calls);
+      } finally { setSearching(false); }
     }, 300);
     return () => clearTimeout(t);
   }, [searchQuery, tenantId]);
@@ -184,6 +199,7 @@ export default function Tasks() {
         title: values.title,
         description: values.description,
         due_date: values.due_date,
+        case_id: values.case_id || null,
         category: values.category || undefined,
         extra_data: values.extra_data,
         fee: values.fee,
@@ -401,6 +417,13 @@ export default function Tasks() {
         onClose={() => { setEditingTask(null); setSaveError(null); }}
       />
 
+      <EditCallModal
+        open={editingCall !== null}
+        call={editingCall}
+        onClose={() => setEditingCall(null)}
+        onUpdated={() => { setEditingCall(null); load(year, month); }}
+      />
+
       {/* Category filter */}
       <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-1.5">
         <button
@@ -464,13 +487,20 @@ export default function Tasks() {
               }
               return true;
             });
-            return filtered.length === 0 ? (
-              <p className="text-sm text-text-secondary py-8 text-center">Δεν βρέθηκαν εργασίες.</p>
+            const total = filtered.length + searchCallResults.length;
+            return total === 0 ? (
+              <p className="text-sm text-text-secondary py-8 text-center">Δεν βρέθηκαν αποτελέσματα.</p>
             ) : (
-              filtered.map(task => (
-                <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
-                  onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
-              ))
+              <>
+                {filtered.map(task => (
+                  <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
+                    onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
+                ))}
+                {searchCallResults.map(call => (
+                  <CallRow key={call.id} call={call} onNavigate={navigate} onEdit={setEditingCall}
+                    onDelete={async (c) => { if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return; await deleteCall(c.id); load(year, month); }} />
+                ))}
+              </>
             );
           })()}
         </div>
@@ -587,10 +617,10 @@ export default function Tasks() {
                     <div className="space-y-2">
                       {!showOnlyCalls && selectedTasks.map(task => (
                         <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
-                          onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                          onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                       ))}
                       {(callsByDay.get(selectedDay!) ?? []).map(call => (
-                        <CallRow key={call.id} call={call} onNavigate={navigate} />
+                        <CallRow key={call.id} call={call} onNavigate={navigate} onEdit={setEditingCall} onDelete={async (c) => { if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return; await deleteCall(c.id); load(year, month); }} />
                       ))}
                     </div>
                   )}
@@ -651,10 +681,10 @@ export default function Tasks() {
                   <div className="space-y-2">
                     {!showOnlyCalls && (tasksByDay.get(anchor) ?? []).map(task => (
                       <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
-                        onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                        onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                     ))}
                     {(callsByDay.get(anchor) ?? []).map(call => (
-                      <CallRow key={call.id} call={call} onNavigate={navigate} />
+                      <CallRow key={call.id} call={call} onNavigate={navigate} onEdit={setEditingCall} onDelete={async (c) => { if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return; await deleteCall(c.id); load(year, month); }} />
                     ))}
                   </div>
                 )}
@@ -670,10 +700,10 @@ export default function Tasks() {
                   <div className="space-y-2">
                     {!showOnlyCalls && (tasksByDay.get(anchor) ?? []).map(task => (
                       <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
-                        onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                        onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                     ))}
                     {(callsByDay.get(anchor) ?? []).map(call => (
-                      <CallRow key={call.id} call={call} onNavigate={navigate} />
+                      <CallRow key={call.id} call={call} onNavigate={navigate} onEdit={setEditingCall} onDelete={async (c) => { if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return; await deleteCall(c.id); load(year, month); }} />
                     ))}
                   </div>
                 )}
@@ -690,7 +720,7 @@ export default function Tasks() {
               <div className="space-y-2">
                 {noDueDateTasks.map(task => (
                   <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
-                    onToggle={toggle} onEdit={setEditingTask} onNavigate={navigate} />
+                    onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                 ))}
               </div>
             </div>
@@ -740,13 +770,15 @@ function EditTaskModal({ task, tenantId, saving, error, onSubmit, onClose }: {
 
 // ── Call row ──────────────────────────────────────────────────────────────────
 
-function CallRow({ call, onNavigate }: {
+function CallRow({ call, onNavigate, onEdit, onDelete }: {
   call: Call;
   onNavigate: ReturnType<typeof useNavigate>;
+  onEdit: (c: Call) => void;
+  onDelete: (c: Call) => void;
 }) {
   const isPhone = call.direction === 'phone';
   return (
-    <div className={`rounded-xl border px-4 py-3 space-y-1 ${isPhone ? 'border-teal-500/20 bg-teal-500/5' : 'border-sky-500/20 bg-sky-500/5'}`}>
+    <div className={`rounded-xl border px-4 py-3 space-y-1 group ${isPhone ? 'border-teal-500/20 bg-teal-500/5' : 'border-sky-500/20 bg-sky-500/5'}`}>
       <div className="flex items-start gap-3">
         <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${isPhone ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'}`}>
           {isPhone ? <Phone className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
@@ -762,9 +794,27 @@ function CallRow({ call, onNavigate }: {
             </button>
           )}
         </div>
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${isPhone ? 'bg-teal-500/15 text-teal-500' : 'bg-sky-500/15 text-sky-500'}`}>
-          {isPhone ? 'Τηλέφωνο' : 'Αυτοπρόσωπα'}
-        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isPhone ? 'bg-teal-500/15 text-teal-500' : 'bg-sky-500/15 text-sky-500'}`}>
+            {isPhone ? 'Τηλέφωνο' : 'Αυτοπρόσωπα'}
+          </span>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => onEdit(call)}
+              className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary hover:text-text-primary cursor-pointer transition-colors"
+              title="Επεξεργασία"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onDelete(call)}
+              className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer transition-colors"
+              title="Διαγραφή"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -772,12 +822,13 @@ function CallRow({ call, onNavigate }: {
 
 // ── Task row ──────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
+function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavigate }: {
   task: Task;
   todayStr: string;
   toggling: string | null;
   onToggle: (t: Task) => void;
   onEdit: (t: Task) => void;
+  onDelete: (t: Task) => void;
   onNavigate: ReturnType<typeof useNavigate>;
 }) {
   const done = task.status === 'done';
@@ -827,6 +878,11 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {task.due_date && (
+            <span className={`text-[14px] font-medium px-1.5 py-0.5 rounded ${color ? DUE_COLOR_CHIP[color] : done ? 'text-text-secondary' : 'bg-white/8 text-text-secondary'}`}>
+              {new Date(task.due_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+            </span>
+          )}
           {color && (
             <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${DUE_COLOR_CHIP[color]}`}>
               <AlertCircle className="h-2.5 w-2.5" />
@@ -838,6 +894,12 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onNavigate }: {
             className="p-1 rounded hover:bg-white/5 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
           >
             <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onDelete(task)}
+            className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger transition-colors cursor-pointer"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>

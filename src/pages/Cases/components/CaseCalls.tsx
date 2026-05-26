@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Plus, Users, X, Link, Phone, RotateCcw } from 'lucide-react';
+import { Plus, Users, X, Link, Phone, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { fetchCaseCalls } from '../caseUtils';
-import { fetchUnlinkedCalls, linkCallToCase } from '../../Calls/callUtils';
+import { fetchUnlinkedCalls, linkCallToCase, deleteCall } from '../../Calls/callUtils';
 import NewCallModal from '../../Calls/modals/NewCallModal';
+import EditCallModal from '../../Calls/modals/EditCallModal';
 import type { CaseCall } from '../types';
 import type { Call } from '../../Calls/types';
 
@@ -18,6 +19,8 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
   const [unlinked, setUnlinked] = useState<Call[]>([]);
   const [unlinkedLoading, setUnlinkedLoading] = useState(false);
   const [linking, setLinking] = useState<string | null>(null);
+  const [editCall, setEditCall] = useState<Call | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -42,6 +45,17 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
       load();
     } finally {
       setLinking(null);
+    }
+  };
+
+  const doDelete = async (callId: string) => {
+    if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return;
+    setDeletingId(callId);
+    try {
+      await deleteCall(callId);
+      load();
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -81,6 +95,13 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
         onClose={() => setMode('none')}
         onCreated={() => { setMode('none'); load(); }}
         initialCaseId={caseId}
+      />
+
+      <EditCallModal
+        open={editCall !== null}
+        call={editCall}
+        onClose={() => setEditCall(null)}
+        onUpdated={() => { setEditCall(null); load(); }}
       />
 
       {/* Link existing */}
@@ -145,7 +166,7 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
       ) : (
         <div className="space-y-2">
           {calls.map((call) => (
-            <div key={call.id} className="rounded-xl border border-border/10 bg-secondary-background p-4 hover:border-border/20 transition-colors">
+            <div key={call.id} className="rounded-xl border border-border/10 bg-secondary-background p-4 hover:border-border/20 transition-colors group">
               <div className="flex items-start gap-3">
                 <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${call.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
                   {call.direction === 'phone' ? <Phone className="h-4 w-4" /> : <Users className="h-4 w-4" />}
@@ -164,6 +185,23 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
                     </span>
                   </div>
                   {call.description && <p className="text-sm text-text-secondary mt-1 leading-relaxed">{call.description}</p>}
+                </div>
+                <div className="shrink-0 flex items-center gap-1">
+                  <button
+                    onClick={() => setEditCall({ ...call, tenant_id: tenantId, case_id: caseId, client_id: null, contact_id: null, case_code: null, case_title: null })}
+                    className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary hover:text-text-primary cursor-pointer transition-colors"
+                    title="Επεξεργασία"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    disabled={deletingId === call.id}
+                    onClick={() => doDelete(call.id)}
+                    className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer transition-colors disabled:opacity-50"
+                    title="Διαγραφή"
+                  >
+                    {deletingId === call.id ? <RotateCcw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  </button>
                 </div>
               </div>
             </div>

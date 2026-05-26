@@ -4,13 +4,14 @@ import {
   Phone, CheckSquare, CalendarClock,
   Check, RotateCcw, Plus,
   ChevronLeft, ChevronRight, X as XIcon,
-  Clock, LinkIcon, Users, Briefcase,
+  Clock, LinkIcon, Users, Briefcase, Pencil, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../auth';
-import { fetchAllTasks, completeTask, reopenTask, createTask } from './Tasks/taskUtils';
-import { fetchCalls, linkCallToCase, searchCasesForCall } from './Calls/callUtils';
+import { fetchDashboardOpenTasks, fetchTasksForMonth, completeTask, reopenTask, createTask, deleteTask } from './Tasks/taskUtils';
+import { fetchCalls, linkCallToCase, searchCasesForCall, deleteCall } from './Calls/callUtils';
 import { supabase } from '../lib/supabase';
 import NewCallModal from './Calls/modals/NewCallModal';
+import EditCallModal from './Calls/modals/EditCallModal';
 import TaskDetailModal from './Tasks/TaskDetailModal';
 import { CasesLineChart } from './Cases/components/CasesLineChart';
 import { ClientsLineChart } from './Clients/components/ClientsLineChart';
@@ -58,6 +59,7 @@ export default function Dashboard() {
   const [totalActiveCases, setTotalActiveCases] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNewCall, setShowNewCall] = useState(false);
+  const [editCall, setEditCall] = useState<Call | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [todayPage, setTodayPage] = useState(0);
@@ -68,7 +70,7 @@ export default function Dashboard() {
     if (!tenantId) return;
     setLoading(true);
     const [t, c, { count: clientCount }, { count: activeCaseCount }] = await Promise.all([
-      fetchAllTasks(tenantId),
+      fetchDashboardOpenTasks(tenantId),
       fetchCalls(tenantId),
       supabase.from('clients').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId),
       supabase.from('cases').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'active'),
@@ -217,7 +219,7 @@ export default function Dashboard() {
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {unlinkedCalls.slice(0, 4).map((call) => (
-              <UnlinkedCallRow key={call.id} call={call} tenantId={tenantId} onLinked={load} />
+              <UnlinkedCallRow key={call.id} call={call} tenantId={tenantId} onLinked={load} onEdit={setEditCall} onDeleted={load} />
             ))}
           </div>
           {unlinkedCalls.length > 4 && (
@@ -229,14 +231,31 @@ export default function Dashboard() {
       )}
 
       {/* Calendar */}
-      {!loading && (
-        <DashboardCalendar tasks={tasks} calls={calls} onNavigate={navigate} tenantId={tenantId} onTaskCreated={load} onToggleTask={toggle} toggling={toggling} onSelectTask={setSelectedTask} />
+      {tenantId && (
+        <DashboardCalendar
+          calls={calls}
+          onNavigate={navigate}
+          tenantId={tenantId}
+          onTaskCreated={load}
+          onToggleTask={toggle}
+          toggling={toggling}
+          onSelectTask={setSelectedTask}
+          onEditCall={(id) => setEditCall(calls.find(c => c.id === id) ?? null)}
+          onDeleteCall={async (id) => { if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return; await deleteCall(id); load(); }}
+          onDeleteTask={async (id) => { if (!confirm('Διαγραφή εργασίας; Η ενέργεια δεν αναιρείται.')) return; await deleteTask(id); load(); }}
+        />
       )}
 
       <NewCallModal
         open={showNewCall}
         onClose={() => setShowNewCall(false)}
         onCreated={() => load()}
+      />
+      <EditCallModal
+        open={editCall !== null}
+        call={editCall}
+        onClose={() => setEditCall(null)}
+        onUpdated={() => { setEditCall(null); load(); }}
       />
       <TaskDetailModal
         task={selectedTask}
@@ -434,16 +453,30 @@ function TaskRow({ task, toggling, onToggle, onNavigate, onSelect }: {
 
 // ── Unlinked call row ─────────────────────────────────────────────────────────
 
-function UnlinkedCallRow({ call, tenantId, onLinked }: {
+function UnlinkedCallRow({ call, tenantId, onLinked, onEdit, onDeleted }: {
   call: Call;
   tenantId: string;
   onLinked: () => void;
+  onEdit: (call: Call) => void;
+  onDeleted: () => void;
 }) {
   const [linking, setLinking] = useState(false);
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState<{ id: string; code: string; title: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const doDelete = async () => {
+    if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return;
+    setDeleting(true);
+    try {
+      await deleteCall(call.id);
+      onDeleted();
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (!linking || !query.trim()) { setOptions([]); return; }
@@ -467,7 +500,7 @@ function UnlinkedCallRow({ call, tenantId, onLinked }: {
   };
 
   return (
-    <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3 space-y-2 hover:border-amber-500/25 transition-colors">
+    <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3 space-y-2 hover:border-amber-500/25 transition-colors group">
       <div className="flex items-start gap-2">
         <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${
           call.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
@@ -485,6 +518,23 @@ function UnlinkedCallRow({ call, tenantId, onLinked }: {
             </span>
           </div>
           {call.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">{call.description}</p>}
+        </div>
+        <div className="shrink-0 flex items-center gap-1">
+          <button
+            onClick={() => onEdit(call)}
+            className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-white/10 text-text-secondary hover:text-text-primary cursor-pointer transition-colors"
+            title="Επεξεργασία"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+          <button
+            disabled={deleting}
+            onClick={doDelete}
+            className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer transition-colors disabled:opacity-50"
+            title="Διαγραφή"
+          >
+            {deleting ? <RotateCcw className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+          </button>
         </div>
       </div>
 
@@ -561,9 +611,8 @@ function weekStart(dateStr: string): string {
 }
 
 function DashboardCalendar({
-  tasks, calls, onNavigate, tenantId, onTaskCreated, onToggleTask, toggling, onSelectTask,
+  calls, onNavigate, tenantId, onTaskCreated, onToggleTask, toggling, onSelectTask, onEditCall, onDeleteCall, onDeleteTask,
 }: {
-  tasks: Task[];
   calls: Call[];
   onNavigate: ReturnType<typeof useNavigate>;
   tenantId: string;
@@ -571,6 +620,9 @@ function DashboardCalendar({
   onToggleTask: (t: Task) => void;
   toggling: string | null;
   onSelectTask: (t: Task) => void;
+  onEditCall: (id: string) => void;
+  onDeleteCall: (id: string) => void;
+  onDeleteTask: (id: string) => void;
 }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
@@ -583,6 +635,11 @@ function DashboardCalendar({
   const [newTaskDate, setNewTaskDate] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+
+  useEffect(() => {
+    fetchTasksForMonth(tenantId, year, month).then(({ tasks: t }) => setTasks(t));
+  }, [tenantId, year, month]);
 
   const handleCreateTask = async (values: TaskFormValues) => {
     setCreating(true);
@@ -600,6 +657,7 @@ function DashboardCalendar({
       });
       setNewTaskDate(null);
       onTaskCreated();
+      fetchTasksForMonth(tenantId, year, month).then(({ tasks: t }) => setTasks(t));
     } catch (err: any) {
       setCreateError(err?.message ?? 'Αποτυχία δημιουργίας εργασίας.');
     } finally {
@@ -730,7 +788,7 @@ function DashboardCalendar({
           })}
         </div>
         {selectedDay && (
-          <DayPanel day={selectedDay} items={selectedItems} todayStr={todayStr} onNavigate={onNavigate} onClose={() => setSelectedDay(null)} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} />
+          <DayPanel day={selectedDay} items={selectedItems} todayStr={todayStr} onNavigate={onNavigate} onClose={() => setSelectedDay(null)} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} onEditCall={onEditCall} onDeleteCall={onDeleteCall} onDeleteTask={onDeleteTask} />
         )}
       </>)}
 
@@ -776,12 +834,12 @@ function DashboardCalendar({
         </div>
       )}
       {view === 'week' && (
-        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} />
+        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} onEditCall={onEditCall} onDeleteCall={onDeleteCall} onDeleteTask={onDeleteTask} />
       )}
 
       {/* Day view */}
       {view === 'day' && (
-        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} />
+        <DayPanel day={anchor} items={itemsByDay.get(anchor) ?? []} todayStr={todayStr} onNavigate={onNavigate} onClose={undefined} onAddTask={setNewTaskDate} onToggleTask={onToggleTask} toggling={toggling} onSelectTask={onSelectTask} onEditCall={onEditCall} onDeleteCall={onDeleteCall} onDeleteTask={onDeleteTask} />
       )}
 
       {/* New task modal */}
@@ -811,7 +869,7 @@ function DashboardCalendar({
   );
 }
 
-function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onToggleTask, toggling, onSelectTask }: {
+function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onToggleTask, toggling, onSelectTask, onEditCall, onDeleteCall, onDeleteTask }: {
   day: string;
   items: CalendarItem[];
   todayStr: string;
@@ -821,6 +879,9 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
   onToggleTask: (t: Task) => void;
   toggling: string | null;
   onSelectTask: (t: Task) => void;
+  onEditCall: (id: string) => void;
+  onDeleteCall: (id: string) => void;
+  onDeleteTask: (id: string) => void;
 }) {
   return (
     <div className="border-t border-border/10 pt-4 space-y-2 animate-fade-in">
@@ -879,7 +940,7 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                         )}
                         {item.category && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-border/5 text-text-secondary border border-border/10">
-                            {item.category === 'legal_act' ? 'Νομικές Πράξεις' : item.category === 'extrajudicial' ? 'Εξοδικαστηκές' : item.category === 'appointment' ? 'Ραντεβού' : 'Εργασία Φακέλου'}
+                            {item.category === 'legal_act' ? 'Νομικές Πράξεις' : item.category === 'extrajudicial' ? 'Εξωδικαστικές' : item.category === 'appointment' ? 'Ραντεβού' : 'Εργασία Φακέλου'}
                           </span>
                         )}
                       </div>
@@ -889,6 +950,13 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                         {col === 'red' ? 'Ληξ/θεσμη' : col === 'purple' ? '≤7 ημ.' : col === 'orange' ? '≤20 ημ.' : '≤30 ημ.'}
                       </span>
                     )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDeleteTask(item.id); }}
+                      className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger transition-colors cursor-pointer shrink-0"
+                      title="Διαγραφή"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   {hasFinancials && (
                     <div className="flex flex-wrap gap-3 pl-7 text-xs">
@@ -904,7 +972,7 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
               );
             }
             return (
-              <div key={item.id} className="rounded-xl border border-border/10 bg-background px-4 py-3 space-y-1 hover:border-border/20 transition-colors">
+              <div key={item.id} className="rounded-xl border border-border/10 bg-background px-4 py-3 space-y-1 hover:border-border/20 transition-colors group">
                 <div className="flex items-start gap-3">
                   <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${item.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
                     {item.direction === 'phone' ? <Phone className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
@@ -922,6 +990,22 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                         {item.case_code} — {item.case_title}
                       </button>
                     )}
+                  </div>
+                  <div className="shrink-0 flex items-center gap-1">
+                    <button
+                      onClick={() => onEditCall(item.id)}
+                      className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary hover:text-text-primary cursor-pointer transition-colors"
+                      title="Επεξεργασία"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => onDeleteCall(item.id)}
+                      className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer transition-colors"
+                      title="Διαγραφή"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
               </div>

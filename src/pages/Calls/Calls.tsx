@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Phone, Users, Plus, AlertCircle, Link2, RotateCcw, Search, CalendarDays, X } from 'lucide-react';
+import { Phone, Users, Plus, AlertCircle, Link2, RotateCcw, Search, CalendarDays, X, Pencil, Trash2 } from 'lucide-react';
 import { useAuth } from '../../auth';
-import { fetchCalls, linkCallToCase, searchCasesForCall } from './callUtils';
+import { fetchCalls, linkCallToCase, searchCasesForCall, deleteCall } from './callUtils';
 import type { Call } from './types';
 import NewCallModal from './modals/NewCallModal';
+import EditCallModal from './modals/EditCallModal';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
 
 // Quick date range presets
@@ -130,6 +131,8 @@ export default function Calls() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editCall, setEditCall] = useState<Call | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -143,6 +146,17 @@ export default function Calls() {
     if (!tenantId) return;
     setLoading(true);
     fetchCalls(tenantId).then(setCalls).finally(() => setLoading(false));
+  };
+
+  const doDelete = async (call: Call) => {
+    if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return;
+    setDeletingId(call.id);
+    try {
+      await deleteCall(call.id);
+      load();
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   useEffect(() => { load(); }, [tenantId]);
@@ -250,6 +264,30 @@ export default function Calls() {
         </span>
       ),
       sortValue: (c) => c.created_at,
+    },
+    {
+      key: 'actions',
+      header: '',
+      alwaysVisible: true,
+      render: (c) => (
+        <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => setEditCall(c)}
+            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary hover:text-text-primary cursor-pointer transition-colors"
+            title="Επεξεργασία"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            disabled={deletingId === c.id}
+            onClick={() => doDelete(c)}
+            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer transition-colors disabled:opacity-50"
+            title="Διαγραφή"
+          >
+            {deletingId === c.id ? <RotateCcw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+      ),
     },
   ];
 
@@ -418,6 +456,13 @@ export default function Calls() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onCreated={() => load()}
+      />
+
+      <EditCallModal
+        open={editCall !== null}
+        call={editCall}
+        onClose={() => setEditCall(null)}
+        onUpdated={() => { setEditCall(null); load(); }}
       />
     </div>
   );

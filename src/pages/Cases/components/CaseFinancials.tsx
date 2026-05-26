@@ -1,7 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Wallet, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { TrendingUp, TrendingDown, Wallet, RotateCcw, Euro } from 'lucide-react';
 import { fetchCaseTasks } from '../caseUtils';
 import type { CaseTask } from '../types';
+import { fetchTaskPaymentsForTasks, type TaskPayment } from '../../Tasks/taskUtils';
 import { formatDate } from '../../../lib/dateUtils';
 
 type Props = { caseId: string; tenantId: string };
@@ -75,21 +77,30 @@ function BarChart({ fees, expenses }: { fees: number; expenses: number }) {
 }
 
 export default function CaseFinancials({ caseId }: Props) {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<CaseTask[]>([]);
+  const [payments, setPayments] = useState<TaskPayment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    fetchCaseTasks(caseId).then(setTasks).finally(() => setLoading(false));
+    fetchCaseTasks(caseId)
+      .then(async (t) => {
+        setTasks(t);
+        const pays = await fetchTaskPaymentsForTasks(t.map(x => x.id));
+        setPayments(pays);
+      })
+      .finally(() => setLoading(false));
   }, [caseId]);
 
-  const { totalFees, totalExpenses, balance, tasksWithFinancials } = useMemo(() => {
+  const { totalFees, totalExpenses, totalPaid, balance, tasksWithFinancials } = useMemo(() => {
     const totalFees = tasks.reduce((s, t) => s + (t.fee ?? 0), 0);
     const totalExpenses = tasks.reduce((s, t) => s + (t.expenses ?? []).reduce((a, e) => a + e.amount, 0), 0);
+    const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
     const balance = totalFees - totalExpenses;
     const tasksWithFinancials = tasks.filter((t) => (t.fee ?? 0) > 0 || (t.expenses ?? []).length > 0);
-    return { totalFees, totalExpenses, balance, tasksWithFinancials };
-  }, [tasks]);
+    return { totalFees, totalExpenses, totalPaid, balance, tasksWithFinancials };
+  }, [tasks, payments]);
 
   if (loading) return (
     <div className="flex items-center gap-2 text-sm text-text-secondary animate-pulse-soft py-4">
@@ -100,7 +111,7 @@ export default function CaseFinancials({ caseId }: Props) {
   return (
     <div className="space-y-5">
       {/* Summary stat cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryCard
           icon={<TrendingUp className="h-5 w-5" />}
           iconBg="bg-blue-500/10"
@@ -116,6 +127,14 @@ export default function CaseFinancials({ caseId }: Props) {
           label="Έξοδα"
           value={formatEur(totalExpenses)}
           valueColor="text-red-500"
+        />
+        <SummaryCard
+          icon={<Euro className="h-5 w-5" />}
+          iconBg="bg-green-500/10"
+          iconColor="text-green-500"
+          label="Εισπραχθέντα"
+          value={formatEur(totalPaid)}
+          valueColor="text-green-500"
         />
         <SummaryCard
           icon={<Wallet className="h-5 w-5" />}
@@ -144,27 +163,56 @@ export default function CaseFinancials({ caseId }: Props) {
           <div className="rounded-xl border border-border/10 overflow-hidden divide-y divide-border/10">
             {tasksWithFinancials.map((t) => {
               const taskExpTotal = (t.expenses ?? []).reduce((s, e) => s + e.amount, 0);
+              const taskPayments = payments.filter(p => p.task_id === t.id);
+              const taskPaid = taskPayments.reduce((s, p) => s + p.amount, 0);
+              const taskFee = t.fee ?? 0;
+              const taskRemaining = taskFee - taskPaid;
+              const paidPct = taskFee > 0 ? Math.min(100, (taskPaid / taskFee) * 100) : 0;
+
               return (
-                <div key={t.id} className="px-4 py-3 flex items-center gap-4 hover:bg-border/5 transition-colors">
-                  <PieChart fee={t.fee ?? 0} expenses={taskExpTotal} />
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-text-primary font-medium truncate">{t.title}</span>
-                      <span className="text-xs text-text-secondary shrink-0">{t.due_date ? formatDate(t.due_date) : '—'}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-3 text-xs">
-                      {(t.fee ?? 0) > 0 && (
-                        <span className="text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full font-medium tabular-nums">
-                          Αμοιβή: {formatEur(t.fee!)}
-                        </span>
-                      )}
-                      {(t.expenses ?? []).map((exp, i) => (
-                        <span key={i} className="text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full font-medium tabular-nums">
-                          {exp.description || 'Έξοδο'}: {formatEur(exp.amount)}
-                        </span>
-                      ))}
+                <div key={t.id} className="px-4 py-3 space-y-2 hover:bg-border/5 transition-colors cursor-pointer" onClick={() => navigate(`/tasks/${t.id}`)}>
+                  <div className="flex items-center gap-4">
+                    <PieChart fee={taskFee} expenses={taskExpTotal} />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-text-primary font-medium truncate">{t.title}</span>
+                        <span className="text-xs text-text-secondary shrink-0">{t.due_date ? formatDate(t.due_date) : '—'}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-xs">
+                        {taskFee > 0 && (
+                          <span className="text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full font-medium tabular-nums">
+                            Αμοιβή: {formatEur(taskFee)}
+                          </span>
+                        )}
+                        {(t.expenses ?? []).map((exp, i) => (
+                          <span key={i} className="text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full font-medium tabular-nums">
+                            {exp.description || 'Έξοδο'}: {formatEur(exp.amount)}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Payment progress — only if task has a fee */}
+                  {taskFee > 0 && (
+                    <div className="ml-16 space-y-1.5">
+                      <div className="h-1.5 rounded-full bg-border/20 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-green-500 transition-all"
+                          style={{ width: `${paidPct}%` }}
+                        />
+                      </div>
+                      <div className="flex gap-3 text-[11px]">
+                        <span className="text-green-500">Πληρωμένο: <strong>{formatEur(taskPaid)}</strong></span>
+                        {taskRemaining > 0 && (
+                          <span className="text-orange-400">Υπόλοιπο: <strong>{formatEur(taskRemaining)}</strong></span>
+                        )}
+                        {taskRemaining <= 0 && taskPaid > 0 && (
+                          <span className="text-green-500 font-semibold">Εξοφλήθηκε</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
