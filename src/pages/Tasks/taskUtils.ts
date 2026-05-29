@@ -25,6 +25,13 @@ export type AppointmentData = {
   end_datetime?: string;
 };
 
+export type CourtData = {
+  start_datetime?: string;
+  end_datetime?: string;
+  decision_number?: string;
+  decision_date?: string;
+};
+
 export type TaskExpense = { description: string; amount: number };
 
 export type LinkedTask = {
@@ -213,9 +220,8 @@ export async function searchFullTasks(tenantId: string, query: string): Promise<
     .from('tasks')
     .select('*, cases(code, title, clients(name))')
     .eq('tenant_id', tenantId)
-    .ilike('title', `%${query}%`)
-    .order('due_date', { ascending: true, nullsFirst: false })
-    .limit(50);
+    .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+    .order('due_date', { ascending: true, nullsFirst: false });
   if (error) throw error;
   return (data ?? []).map(mapTask);
 }

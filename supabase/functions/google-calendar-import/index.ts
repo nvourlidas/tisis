@@ -62,22 +62,51 @@ async function processPage(
 
   if (toUpsert.length === 0) return 0
 
-  const rows = toUpsert.map((e) => ({
-    tenant_id: tenantId,
-    title: e.summary,
-    description: e.description ?? null,
-    due_date: extractDate(e),
-    status: 'open',
-    google_event_id: e.id,
-  }))
-
-  const { data, error } = await supabase
+  // Find which google_event_ids already exist so we don't overwrite their status
+  const eventIds = toUpsert.map((e) => e.id)
+  const { data: existing } = await supabase
     .from('tasks')
-    .upsert(rows, { onConflict: 'google_event_id', ignoreDuplicates: false })
-    .select('id')
+    .select('google_event_id')
+    .eq('tenant_id', tenantId)
+    .in('google_event_id', eventIds)
+  const existingIds = new Set((existing ?? []).map((r: any) => r.google_event_id))
 
-  if (error) throw new Error(error.message)
-  return data?.length ?? 0
+  const newEvents = toUpsert.filter((e) => !existingIds.has(e.id))
+  const updatedEvents = toUpsert.filter((e) => existingIds.has(e.id))
+
+  let count = 0
+
+  if (newEvents.length > 0) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert(newEvents.map((e) => ({
+        tenant_id: tenantId,
+        title: e.summary,
+        description: e.description ?? null,
+        due_date: extractDate(e),
+        status: 'open',
+        google_event_id: e.id,
+      })))
+      .select('id')
+    if (error) throw new Error(error.message)
+    count += data?.length ?? 0
+  }
+
+  // Update existing tasks — only sync content fields, never touch status
+  for (const e of updatedEvents) {
+    await supabase
+      .from('tasks')
+      .update({
+        title: e.summary,
+        description: e.description ?? null,
+        due_date: extractDate(e),
+      })
+      .eq('tenant_id', tenantId)
+      .eq('google_event_id', e.id)
+  }
+  count += updatedEvents.length
+
+  return count
 }
 
 async function syncCalendar(

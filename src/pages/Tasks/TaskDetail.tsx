@@ -10,7 +10,7 @@ import {
   fetchTask, fetchLinkedTasks, completeTask, reopenTask, updateTask,
   fetchTaskPayments, createTaskPayment, deleteTaskPayment,
   TASK_CATEGORIES,
-  type Task, type LinkedTask, type LegalActData, type AppointmentData, type TaskPayment,
+  type Task, type LinkedTask, type LegalActData, type AppointmentData, type CourtData, type TaskPayment,
 } from './taskUtils';
 import TaskForm, { taskToFormValues, type TaskFormValues } from './TaskForm';
 
@@ -141,8 +141,10 @@ export default function TaskDetail() {
   const isDone = task.status === 'done';
   const legalAct = (task.category === 'legal_act' || task.category === 'lawsuit')
     ? (task.extra_data as LegalActData | null) : null;
-  const appointment = (task.category === 'appointment' || task.category === 'court')
+  const appointment = task.category === 'appointment'
     ? (task.extra_data as AppointmentData | null) : null;
+  const courtData = task.category === 'court'
+    ? (task.extra_data as CourtData | null) : null;
   const totalExpenses = task.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
 
   return (
@@ -280,15 +282,35 @@ export default function TaskDetail() {
         </Section>
       )}
 
-      {/* Appointment / Court details */}
+      {/* Appointment details */}
       {appointment && (appointment.start_datetime || appointment.end_datetime) && (
-        <Section title={task.category === 'court' ? 'Στοιχεία Δικαστηρίου' : 'Στοιχεία Ραντεβού'}>
+        <Section title="Στοιχεία Ραντεβού">
           <div className="grid grid-cols-2 gap-4">
             {appointment.start_datetime && (
               <Field label="Έναρξη" value={new Date(appointment.start_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
             )}
             {appointment.end_datetime && (
               <Field label="Λήξη" value={new Date(appointment.end_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+            )}
+          </div>
+        </Section>
+      )}
+
+      {/* Court details */}
+      {courtData && (courtData.start_datetime || courtData.end_datetime || courtData.decision_number || courtData.decision_date) && (
+        <Section title="Στοιχεία Δικαστηρίου">
+          <div className="grid grid-cols-2 gap-4">
+            {courtData.start_datetime && (
+              <Field label="Έναρξη" value={new Date(courtData.start_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+            )}
+            {courtData.end_datetime && (
+              <Field label="Λήξη" value={new Date(courtData.end_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+            )}
+            {courtData.decision_number && (
+              <Field label="Αριθμός Απόφασης" value={courtData.decision_number} />
+            )}
+            {courtData.decision_date && (
+              <Field label="Ημερομηνία Έκδοσης" value={new Date(courtData.decision_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })} />
             )}
           </div>
         </Section>

@@ -9,7 +9,7 @@ import { supabase } from '../../lib/supabase';
 import {
   fetchTasksForMonth, fetchTaskCounts, completeTask, reopenTask, createTask, updateTask, deleteTask,
   searchFullTasks,
-  TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData,
+  TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData, type CourtData,
 } from './taskUtils';
 import { fetchCallsForMonth, deleteCall, searchCalls } from '../Calls/callUtils';
 import EditCallModal from '../Calls/modals/EditCallModal';
@@ -104,6 +104,8 @@ export default function Tasks() {
   const [searchResults, setSearchResults] = useState<Task[]>([]);
   const [searchCallResults, setSearchCallResults] = useState<Call[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchYear, setSearchYear] = useState<number | null>(null);
+  const [searchMonth, setSearchMonth] = useState<number | null>(null);
 
   useEffect(() => {
     if (!searchQuery.trim() || !tenantId) { setSearchResults([]); setSearchCallResults([]); return; }
@@ -470,7 +472,34 @@ export default function Tasks() {
       )}
 
       {searchQuery.trim() ? (
-        <div className="animate-fade-in-up stagger-2 space-y-2">
+        <div className="animate-fade-in-up stagger-2 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={searchYear ?? ''}
+              onChange={e => setSearchYear(e.target.value ? Number(e.target.value) : null)}
+              className="bg-secondary-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλα τα έτη</option>
+              {Array.from({ length: todayDate.getFullYear() - 1999 }, (_, i) => 2000 + i).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <select
+              value={searchMonth ?? ''}
+              onChange={e => setSearchMonth(e.target.value !== '' ? Number(e.target.value) : null)}
+              className="bg-secondary-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλοι οι μήνες</option>
+              {MONTH_NAMES.map((name, i) => (
+                <option key={i} value={i}>{name}</option>
+              ))}
+            </select>
+            {(searchYear !== null || searchMonth !== null) && (
+              <button onClick={() => { setSearchYear(null); setSearchMonth(null); }} className="text-xs text-text-secondary hover:text-text-primary cursor-pointer">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           {searching ? (
             <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
               <RotateCcw className="h-4 w-4 animate-spin" />
@@ -485,18 +514,38 @@ export default function Tasks() {
                 if (gakFilter && !d.gak?.toLowerCase().includes(gakFilter.toLowerCase())) return false;
                 if (eakFilter && !d.eak?.toLowerCase().includes(eakFilter.toLowerCase())) return false;
               }
+              if (searchYear !== null && t.due_date) {
+                const y = new Date(t.due_date + 'T00:00:00').getFullYear();
+                if (y !== searchYear) return false;
+              }
+              if (searchMonth !== null && t.due_date) {
+                const m = new Date(t.due_date + 'T00:00:00').getMonth();
+                if (m !== searchMonth) return false;
+              }
               return true;
             });
-            const total = filtered.length + searchCallResults.length;
+            const filteredCalls = searchCallResults.filter(c => {
+              if (searchYear !== null) {
+                const y = new Date(c.created_at).getFullYear();
+                if (y !== searchYear) return false;
+              }
+              if (searchMonth !== null) {
+                const m = new Date(c.created_at).getMonth();
+                if (m !== searchMonth) return false;
+              }
+              return true;
+            });
+            const total = filtered.length + filteredCalls.length;
             return total === 0 ? (
               <p className="text-sm text-text-secondary py-8 text-center">Δεν βρέθηκαν αποτελέσματα.</p>
             ) : (
               <>
+                <p className="text-xs text-text-secondary">{total} αποτελέσματα</p>
                 {filtered.map(task => (
                   <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
                     onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                 ))}
-                {searchCallResults.map(call => (
+                {filteredCalls.map(call => (
                   <CallRow key={call.id} call={call} onNavigate={navigate} onEdit={setEditingCall}
                     onDelete={async (c) => { if (!confirm('Διαγραφή γεγονότος; Η ενέργεια δεν αναιρείται.')) return; await deleteCall(c.id); load(year, month); }} />
                 ))}
@@ -937,6 +986,13 @@ function ExtraDataSummary({ task }: { task: Task }) {
         const end = d.end_datetime ? ' – ' + new Date(d.end_datetime).toLocaleString('el-GR', { hour: '2-digit', minute: '2-digit' }) : '';
         lines.push(<span key="appt">{start}{end}</span>);
       }
+    } else if (task.category === 'court') {
+      const d = task.extra_data as CourtData;
+      const parts = [
+        d.decision_number && `Αρ. Απόφασης: ${d.decision_number}`,
+        d.decision_date && `Ημ. Έκδοσης: ${new Date(d.decision_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`,
+      ].filter(Boolean);
+      if (parts.length) lines.push(<span key="court">{parts.join(' · ')}</span>);
     }
   }
 

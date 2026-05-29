@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Briefcase, Info, Users, Phone,
-  CheckSquare, TrendingUp, FolderOpen, RotateCcw,
+  CheckSquare, TrendingUp, FolderOpen, RotateCcw, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
-import { fetchCase } from './caseUtils';
+import { fetchCase, deleteCase } from './caseUtils';
 import type { Case } from './types';
 import CaseInfo from './components/CaseInfo';
 import CaseContacts from './components/CaseContacts';
@@ -52,6 +52,8 @@ export default function CaseDetail() {
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('info');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -113,6 +115,38 @@ export default function CaseDetail() {
                 </p>
               )}
             </div>
+          </div>
+          <div className="shrink-0">
+            {!confirmDelete ? (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-text-secondary hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4" />
+                Διαγραφή
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-text-secondary">Διαγραφή υπόθεσης;</span>
+                <button
+                  onClick={async () => {
+                    setDeleting(true);
+                    try { await deleteCase(caseData.id); navigate('/cases'); }
+                    finally { setDeleting(false); }
+                  }}
+                  disabled={deleting}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium bg-danger text-white hover:bg-danger/90 disabled:opacity-50 cursor-pointer transition-colors"
+                >
+                  {deleting ? 'Διαγραφή…' : 'Ναι, διαγραφή'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-3 py-1.5 rounded-lg text-sm text-text-secondary hover:bg-border/10 cursor-pointer transition-colors"
+                >
+                  Ακύρωση
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

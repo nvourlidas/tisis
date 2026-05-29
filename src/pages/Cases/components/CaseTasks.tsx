@@ -54,6 +54,8 @@ export default function CaseTasks({ caseId }: Props) {
 
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [listYear, setListYear] = useState<number | null>(null);
+  const [listMonth, setListMonth] = useState<number | null>(null);
 
   const [view, setView] = useState<CalendarView>('month');
   const [year, setYear] = useState(todayDate.getFullYear());
@@ -167,10 +169,16 @@ export default function CaseTasks({ caseId }: Props) {
     const q = searchQuery.trim().toLowerCase();
     return tasks.filter(t => {
       if (categoryFilter && t.category !== categoryFilter) return false;
-      if (q && !t.title.toLowerCase().includes(q)) return false;
+      if (q && !t.title.toLowerCase().includes(q) && !(t.description ?? '').toLowerCase().includes(q)) return false;
+      if (listYear !== null && t.due_date) {
+        if (new Date(t.due_date + 'T00:00:00').getFullYear() !== listYear) return false;
+      }
+      if (listMonth !== null && t.due_date) {
+        if (new Date(t.due_date + 'T00:00:00').getMonth() !== listMonth) return false;
+      }
       return true;
     });
-  }, [tasks, categoryFilter, searchQuery]);
+  }, [tasks, categoryFilter, searchQuery, listYear, listMonth]);
 
   const tasksByDay = useMemo(() => {
     const map = new Map<string, CaseTask[]>();
@@ -311,8 +319,36 @@ export default function CaseTasks({ caseId }: Props) {
         <p className="text-sm text-text-secondary">Φόρτωση…</p>
       ) : tasks.length === 0 ? (
         <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες για αυτή την υπόθεση.</p>
-      ) : searchQuery.trim() ? (
-        <div className="space-y-2">
+      ) : (searchQuery.trim() || categoryFilter) ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={listYear ?? ''}
+              onChange={e => setListYear(e.target.value ? Number(e.target.value) : null)}
+              className="bg-secondary-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλα τα έτη</option>
+              {Array.from({ length: todayDate.getFullYear() - 1999 }, (_, i) => 2000 + i).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <select
+              value={listMonth ?? ''}
+              onChange={e => setListMonth(e.target.value !== '' ? Number(e.target.value) : null)}
+              className="bg-secondary-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλοι οι μήνες</option>
+              {MONTH_NAMES.map((name, i) => (
+                <option key={i} value={i}>{name}</option>
+              ))}
+            </select>
+            {(listYear !== null || listMonth !== null) && (
+              <button onClick={() => { setListYear(null); setListMonth(null); }} className="p-0.5 rounded hover:bg-white/10 text-text-secondary cursor-pointer">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <span className="text-xs text-text-secondary">{filteredTasks.length} αποτελέσματα</span>
+          </div>
           {filteredTasks.length === 0 ? (
             <p className="text-sm text-text-secondary py-4 text-center">Δεν βρέθηκαν εργασίες.</p>
           ) : (

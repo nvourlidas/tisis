@@ -133,7 +133,7 @@ export default function NewCaseModal({ open, onClose, onSubmit, tenantId, defaul
             </div>
           </div>
           <div>
-            <label className="block text-sm text-text-secondary mb-1">Ημερομηνία Καταχώρησης</label>
+            <label className="block text-sm text-text-secondary mb-1">Ημερομηνία Δημιουργίας</label>
             <input
               type="date"
               className="input w-full"

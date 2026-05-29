@@ -93,6 +93,11 @@ export async function createCase(_tenantId: string, form: CaseFormData): Promise
   return data;
 }
 
+export async function deleteCase(id: string): Promise<void> {
+  const { error } = await supabase.from('cases').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function updateCase(id: string, form: Partial<CaseFormData>): Promise<void> {
   const sanitized: Record<string, unknown> = { id };
   for (const [k, v] of Object.entries(form)) {

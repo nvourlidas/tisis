@@ -119,8 +119,7 @@ export async function searchCalls(tenantId: string, query: string): Promise<Call
     .select('*, cases(code, title)')
     .eq('tenant_id', tenantId)
     .or(`caller_name.ilike.%${query}%,phone.ilike.%${query}%,description.ilike.%${query}%`)
-    .order('created_at', { ascending: false })
-    .limit(30);
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r: any) => ({
     ...r,

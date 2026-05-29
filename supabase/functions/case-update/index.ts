@@ -1,6 +1,6 @@
 import { corsHeaders, json, authenticate } from '../_shared/auth.ts'
 
-const ALLOWED = ['code', 'title', 'client_id', 'status', 'type', 'stage_id', 'description', 'next_critical_date', 'google_drive_url', 'notes']
+const ALLOWED = ['code', 'title', 'client_id', 'status', 'type', 'stage_id', 'description', 'next_critical_date', 'google_drive_url', 'notes', 'created_at']
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })

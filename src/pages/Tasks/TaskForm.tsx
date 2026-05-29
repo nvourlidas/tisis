@@ -3,7 +3,7 @@ import { Search, X, Plus, Trash2, Link2 } from 'lucide-react';
 import { searchCasesForCall } from '../Calls/callUtils';
 import {
   TASK_CATEGORIES, searchTasks, fetchLinkedTasks, createTask,
-  type TaskCategory, type LegalActData, type AppointmentData, type Task, type TaskExpense, type LinkedTask,
+  type TaskCategory, type LegalActData, type AppointmentData, type CourtData, type Task, type TaskExpense, type LinkedTask,
 } from './taskUtils';
 
 export type TaskFormValues = {
@@ -35,6 +35,7 @@ const emptyLegalAct = (): LegalActData => ({
   decision: { number: '', date: '', description: '' },
 });
 const emptyAppointment = (): AppointmentData => ({ start_datetime: '', end_datetime: '' });
+const emptyCourt = (): CourtData => ({ start_datetime: '', end_datetime: '', decision_number: '', decision_date: '' });
 
 function legalActFromData(d: LegalActData | null | undefined): LegalActData {
   return {
@@ -55,7 +56,16 @@ function appointmentFromData(d: AppointmentData | null | undefined): Appointment
   return { start_datetime: d?.start_datetime ?? '', end_datetime: d?.end_datetime ?? '' };
 }
 
-export function buildExtraData(category: TaskCategory | '', legalAct: LegalActData, appointment: AppointmentData): LegalActData | AppointmentData | null {
+function courtFromData(d: CourtData | null | undefined): CourtData {
+  return {
+    start_datetime: d?.start_datetime ?? '',
+    end_datetime: d?.end_datetime ?? '',
+    decision_number: d?.decision_number ?? '',
+    decision_date: d?.decision_date ?? '',
+  };
+}
+
+export function buildExtraData(category: TaskCategory | '', legalAct: LegalActData, appointment: AppointmentData, court: CourtData): LegalActData | AppointmentData | CourtData | null {
   if (category === 'legal_act' || category === 'lawsuit') {
     const d: LegalActData = {};
     if (category === 'legal_act' && legalAct.protocol_number) d.protocol_number = legalAct.protocol_number;
@@ -72,7 +82,15 @@ export function buildExtraData(category: TaskCategory | '', legalAct: LegalActDa
     }
     return Object.keys(d).length ? d : null;
   }
-  if (category === 'appointment' || category === 'court') {
+  if (category === 'court') {
+    const d: CourtData = {};
+    if (court.start_datetime) d.start_datetime = court.start_datetime;
+    if (court.end_datetime) d.end_datetime = court.end_datetime;
+    if (court.decision_number) d.decision_number = court.decision_number;
+    if (court.decision_date) d.decision_date = court.decision_date;
+    return Object.keys(d).length ? d : null;
+  }
+  if (category === 'appointment') {
     const d: AppointmentData = {};
     if (appointment.start_datetime) d.start_datetime = appointment.start_datetime;
     if (appointment.end_datetime) d.end_datetime = appointment.end_datetime;
@@ -107,7 +125,10 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
     (initial?.category === 'legal_act' || initial?.category === 'lawsuit') ? legalActFromData(initExtra as LegalActData) : emptyLegalAct()
   );
   const [appointment, setAppointment] = useState<AppointmentData>(
-    (initial?.category === 'appointment' || initial?.category === 'court') ? appointmentFromData(initExtra as AppointmentData) : emptyAppointment()
+    initial?.category === 'appointment' ? appointmentFromData(initExtra as AppointmentData) : emptyAppointment()
+  );
+  const [court, setCourt] = useState<CourtData>(
+    initial?.category === 'court' ? courtFromData(initExtra as CourtData) : emptyCourt()
   );
 
   const [fee, setFee] = useState<string>(initial?.fee != null ? String(initial.fee) : '');
@@ -184,7 +205,7 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
     if (!title.trim()) return;
     onSubmit({
       title, description, due_date, case_id, category,
-      extra_data: buildExtraData(category, legalAct, appointment),
+      extra_data: buildExtraData(category, legalAct, appointment, court),
       fee: fee !== '' ? parseFloat(fee) : null,
       expenses: expenses.filter(e => e.description.trim() || e.amount),
       linked_task_ids: linkedTasks.map(t => t.id),
@@ -313,12 +334,10 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
           </div>
         )}
 
-        {/* Extra fields: Επαγγελματικά Ραντεβού / Δικαστήριο */}
-        {(category === 'appointment' || category === 'court') && (
+        {/* Extra fields: Επαγγελματικά Ραντεβού */}
+        {category === 'appointment' && (
           <div className="space-y-3 rounded-xl border border-border/10 p-4">
-            <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-              {category === 'court' ? 'Στοιχεία Δικαστηρίου' : 'Στοιχεία Ραντεβού'}
-            </p>
+            <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Στοιχεία Ραντεβού</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-text-secondary mb-1">Έναρξη</label>
@@ -327,6 +346,31 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
               <div>
                 <label className="block text-xs text-text-secondary mb-1">Λήξη</label>
                 <input type="datetime-local" className="input w-full text-sm" value={appointment.end_datetime ?? ''} onChange={e => setAppointment(f => ({ ...f, end_datetime: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Extra fields: Δικαστήριο */}
+        {category === 'court' && (
+          <div className="space-y-3 rounded-xl border border-border/10 p-4">
+            <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Στοιχεία Δικαστηρίου</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Έναρξη</label>
+                <input type="datetime-local" className="input w-full text-sm" value={court.start_datetime ?? ''} onChange={e => setCourt(f => ({ ...f, start_datetime: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Λήξη</label>
+                <input type="datetime-local" className="input w-full text-sm" value={court.end_datetime ?? ''} onChange={e => setCourt(f => ({ ...f, end_datetime: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Αριθμός Απόφασης</label>
+                <input className="input w-full text-sm" value={court.decision_number ?? ''} onChange={e => setCourt(f => ({ ...f, decision_number: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Ημερομηνία Έκδοσης</label>
+                <input type="date" className="input w-full text-sm" value={court.decision_date ?? ''} onChange={e => setCourt(f => ({ ...f, decision_date: e.target.value }))} />
               </div>
             </div>
           </div>

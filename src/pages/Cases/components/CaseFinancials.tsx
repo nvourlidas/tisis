@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, TrendingDown, Wallet, RotateCcw, Euro } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, RotateCcw, Euro, Pencil, X, Plus, Trash2 } from 'lucide-react';
 import { fetchCaseTasks } from '../caseUtils';
 import type { CaseTask } from '../types';
-import { fetchTaskPaymentsForTasks, type TaskPayment } from '../../Tasks/taskUtils';
+import { fetchTaskPaymentsForTasks, fetchTaskPayments, createTaskPayment, deleteTaskPayment, type TaskPayment } from '../../Tasks/taskUtils';
 import { formatDate } from '../../../lib/dateUtils';
 
 type Props = { caseId: string; tenantId: string };
@@ -76,13 +76,14 @@ function BarChart({ fees, expenses }: { fees: number; expenses: number }) {
   );
 }
 
-export default function CaseFinancials({ caseId }: Props) {
+export default function CaseFinancials({ caseId, tenantId }: Props) {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<CaseTask[]>([]);
   const [payments, setPayments] = useState<TaskPayment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingTask, setEditingTask] = useState<CaseTask | null>(null);
 
-  useEffect(() => {
+  const reload = () => {
     setLoading(true);
     fetchCaseTasks(caseId)
       .then(async (t) => {
@@ -91,18 +92,20 @@ export default function CaseFinancials({ caseId }: Props) {
         setPayments(pays);
       })
       .finally(() => setLoading(false));
-  }, [caseId]);
+  };
+
+  useEffect(() => { reload(); }, [caseId]);
 
   const { totalFees, totalExpenses, totalPaid, balance, tasksWithFinancials } = useMemo(() => {
     const totalFees = tasks.reduce((s, t) => s + (t.fee ?? 0), 0);
     const totalExpenses = tasks.reduce((s, t) => s + (t.expenses ?? []).reduce((a, e) => a + e.amount, 0), 0);
     const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
-    const balance = totalFees - totalExpenses;
+    const balance = totalFees - totalPaid;
     const tasksWithFinancials = tasks.filter((t) => (t.fee ?? 0) > 0 || (t.expenses ?? []).length > 0);
     return { totalFees, totalExpenses, totalPaid, balance, tasksWithFinancials };
   }, [tasks, payments]);
 
-  if (loading) return (
+  if (loading && tasks.length === 0) return (
     <div className="flex items-center gap-2 text-sm text-text-secondary animate-pulse-soft py-4">
       <RotateCcw className="h-4 w-4 animate-spin" /> Φόρτωση οικονομικών…
     </div>
@@ -110,6 +113,12 @@ export default function CaseFinancials({ caseId }: Props) {
 
   return (
     <div className="space-y-5">
+      <FinancialsEditModal
+        task={editingTask}
+        tenantId={tenantId}
+        onClose={() => setEditingTask(null)}
+        onSaved={() => { setEditingTask(null); reload(); }}
+      />
       {/* Summary stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryCard
@@ -138,11 +147,11 @@ export default function CaseFinancials({ caseId }: Props) {
         />
         <SummaryCard
           icon={<Wallet className="h-5 w-5" />}
-          iconBg={balance >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'}
-          iconColor={balance >= 0 ? 'text-green-500' : 'text-red-500'}
-          label="Καθαρό Σύνολο"
+          iconBg="bg-orange-500/10"
+          iconColor="text-orange-500"
+          label="Υπόλοιπο"
           value={formatEur(balance)}
-          valueColor={balance >= 0 ? 'text-green-500' : 'text-red-500'}
+          valueColor="text-orange-500"
         />
       </div>
 
@@ -170,13 +179,22 @@ export default function CaseFinancials({ caseId }: Props) {
               const paidPct = taskFee > 0 ? Math.min(100, (taskPaid / taskFee) * 100) : 0;
 
               return (
-                <div key={t.id} className="px-4 py-3 space-y-2 hover:bg-border/5 transition-colors cursor-pointer" onClick={() => navigate(`/tasks/${t.id}`)}>
+                <div key={t.id} className="px-4 py-3 space-y-2 hover:bg-border/5 transition-colors">
                   <div className="flex items-center gap-4">
                     <PieChart fee={taskFee} expenses={taskExpTotal} />
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-text-primary font-medium truncate">{t.title}</span>
-                        <span className="text-xs text-text-secondary shrink-0">{t.due_date ? formatDate(t.due_date) : '—'}</span>
+                        <button onClick={() => navigate(`/tasks/${t.id}`)} className="text-sm text-text-primary font-medium truncate hover:underline cursor-pointer text-left">{t.title}</button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-text-secondary">{t.due_date ? formatDate(t.due_date) : '—'}</span>
+                          <button
+                            onClick={() => setEditingTask(t)}
+                            className="p-1 rounded hover:bg-white/8 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                            title="Επεξεργασία οικονομικών"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-3 text-xs">
                         {taskFee > 0 && (
@@ -219,6 +237,146 @@ export default function CaseFinancials({ caseId }: Props) {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function FinancialsEditModal({ task, tenantId, onClose, onSaved }: {
+  task: CaseTask | null;
+  tenantId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [taskPayments, setTaskPayments] = useState<TaskPayment[]>([]);
+  const [loadingPay, setLoadingPay] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [paidAt, setPaidAt] = useState(todayStr);
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPayments = (taskId: string) => {
+    setLoadingPay(true);
+    fetchTaskPayments(taskId).then(setTaskPayments).finally(() => setLoadingPay(false));
+  };
+
+  useEffect(() => {
+    if (!task) return;
+    setAmount('');
+    setPaidAt(todayStr);
+    setNotes('');
+    setError(null);
+    loadPayments(task.id);
+  }, [task?.id]);
+
+  if (!task) return null;
+
+  const taskFee = task.fee ?? 0;
+  const totalPaid = taskPayments.reduce((s, p) => s + p.amount, 0);
+  const remaining = taskFee - totalPaid;
+
+  const handleAdd = async () => {
+    if (!amount || Number(amount) <= 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createTaskPayment(tenantId, task.id, { amount: Number(amount), paid_at: paidAt, notes: notes || undefined });
+      setAmount('');
+      setNotes('');
+      loadPayments(task.id);
+      onSaved();
+    } catch (e: any) {
+      setError(e?.message ?? 'Αποτυχία αποθήκευσης.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Διαγραφή πληρωμής;')) return;
+    await deleteTaskPayment(id);
+    loadPayments(task.id);
+    onSaved();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-border/20 bg-secondary-background shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/10">
+          <div>
+            <h2 className="text-sm font-semibold text-text-primary">Πληρωμές Εργασίας</h2>
+            <p className="text-xs text-text-secondary mt-0.5 truncate max-w-xs">{task.title}</p>
+          </div>
+          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 text-text-secondary cursor-pointer">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          {taskFee > 0 && (
+            <div className="rounded-xl border border-border/10 bg-white/3 px-4 py-3 flex flex-wrap gap-4 text-xs">
+              <span className="text-text-secondary">Αμοιβή: <span className="text-blue-500 font-semibold">{formatEur(taskFee)}</span></span>
+              <span className="text-text-secondary">Πληρωμένο: <span className="text-green-500 font-semibold">{formatEur(totalPaid)}</span></span>
+              {remaining > 0 && <span className="text-text-secondary">Υπόλοιπο: <span className="text-orange-400 font-semibold">{formatEur(remaining)}</span></span>}
+              {remaining <= 0 && totalPaid > 0 && <span className="text-green-500 font-semibold">Εξοφλήθηκε</span>}
+            </div>
+          )}
+
+          {/* Existing payments */}
+          {loadingPay ? (
+            <p className="text-xs text-text-secondary">Φόρτωση…</p>
+          ) : taskPayments.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-text-secondary uppercase tracking-wider">Καταχωρημένες πληρωμές</p>
+              {taskPayments.map(p => (
+                <div key={p.id} className="flex items-center gap-3 rounded-lg border border-border/10 bg-white/2 px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-semibold text-green-500">{formatEur(p.amount)}</span>
+                    <span className="text-xs text-text-secondary ml-2">{formatDate(p.paid_at)}</span>
+                    {p.notes && <p className="text-xs text-text-secondary truncate">{p.notes}</p>}
+                  </div>
+                  <button onClick={() => handleDelete(p.id)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-text-secondary">Δεν υπάρχουν πληρωμές ακόμα.</p>
+          )}
+
+          {/* Add payment form */}
+          <div className="border-t border-border/10 pt-4 space-y-3">
+            <p className="text-xs font-medium text-text-secondary uppercase tracking-wider">Νέα πληρωμή</p>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs text-text-secondary mb-1">Ποσό (€)</label>
+                <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)}
+                  placeholder="0.00" className="input w-full text-sm rounded-xl" />
+              </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Ημερομηνία</label>
+                <input type="date" value={paidAt} onChange={e => setPaidAt(e.target.value)} className="input text-sm rounded-xl" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Σημειώσεις</label>
+              <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="Προαιρετικά…" className="input w-full text-sm rounded-xl" />
+            </div>
+            {error && <p className="text-xs text-danger">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-text-secondary hover:bg-white/5 cursor-pointer">Κλείσιμο</button>
+              <button onClick={handleAdd} disabled={saving || !amount || Number(amount) <= 0}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+                <Plus className="h-3.5 w-3.5" />
+                {saving ? 'Αποθήκευση…' : 'Προσθήκη'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

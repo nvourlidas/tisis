@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Check, X, ExternalLink, User, Tag, Layers, Globe } from 'lucide-react';
+import { Pencil, Check, X, ExternalLink, User, Tag, Layers, Globe, Calendar } from 'lucide-react';
 import { updateCase, fetchStages } from '../caseUtils';
 import { fetchClients } from '../../Clients/clientUtils';
 import type { Client } from '../../Clients/types';
@@ -32,6 +32,7 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
       description: caseData.description ?? '',
       google_drive_url: caseData.google_drive_url ?? '',
       notes: caseData.notes ?? '',
+      created_at: caseData.created_at ? caseData.created_at.slice(0, 10) : '',
     });
     setEditing(true);
     setError(null);
@@ -86,6 +87,9 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
               <option value="closed">Κλειστή</option>
             </select>
           </FormField>
+          <FormField label="Ημερομηνία Δημιουργίας">
+            <input className="input w-full rounded-xl border-border/15" type="date" value={form.created_at ?? ''} onChange={set('created_at')} />
+          </FormField>
           <FormField label="Τύπος Υπόθεσης">
             <select className="select w-full" value={form.type ?? ''} onChange={set('type')}>
               <option value="">— Επιλέξτε τύπο —</option>
@@ -136,6 +140,7 @@ export default function CaseInfo({ caseData, tenantId, onUpdate }: Props) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <InfoCard icon={<Calendar className="h-4 w-4" />} iconColor="text-text-secondary" iconBg="bg-border/10" label="Ημερομηνία Δημιουργίας" value={caseData.created_at ? new Date(caseData.created_at).toLocaleDateString('el-GR') : null} />
         <InfoCard icon={<Tag className="h-4 w-4" />} iconColor="text-blue-500" iconBg="bg-blue-500/10" label="Τύπος Υπόθεσης" value={caseData.type} />
         <InfoCard icon={<Layers className="h-4 w-4" />} iconColor="text-purple-500" iconBg="bg-purple-500/10" label="Στάδιο" value={caseData.stage_name} />
         {caseData.client_name && (
