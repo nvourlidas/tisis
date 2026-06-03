@@ -10,6 +10,7 @@ export type TaskFormValues = {
   title: string;
   description: string;
   due_date: string;
+  due_time: string;
   case_id: string;
   category: TaskCategory | '';
   extra_data: LegalActData | AppointmentData | null;
@@ -104,6 +105,7 @@ export function taskToFormValues(task: Task): TaskFormValues {
     title: task.title,
     description: task.description ?? '',
     due_date: task.due_date ?? '',
+    due_time: task.due_time ?? '',
     case_id: task.case_id ?? '',
     category: task.category ?? '',
     extra_data: task.extra_data ?? null,
@@ -117,6 +119,7 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [due_date, setDueDate] = useState(initial?.due_date ?? '');
+  const [due_time, setDueTime] = useState(initial?.due_time ?? '');
   const [case_id, setCaseId] = useState(initial?.case_id ?? '');
   const [category, setCategory] = useState<TaskCategory | ''>(initial?.category ?? '');
 
@@ -204,7 +207,7 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
     e.preventDefault();
     if (!title.trim()) return;
     onSubmit({
-      title, description, due_date, case_id, category,
+      title, description, due_date, due_time, case_id, category,
       extra_data: buildExtraData(category, legalAct, appointment, court),
       fee: fee !== '' ? parseFloat(fee) : null,
       expenses: expenses.filter(e => e.description.trim() || e.amount),
@@ -237,9 +240,15 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
         </div>
 
         <div className={`grid grid-cols-1 gap-4 ${!hideCaseField ? 'sm:grid-cols-2' : ''}`}>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Ημερομηνία</label>
-            <input type="date" className="input w-full" value={due_date} onChange={e => setDueDate(e.target.value)} />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs text-text-secondary mb-1">Ημερομηνία</label>
+              <input type="date" className="input w-full" value={due_date} onChange={e => setDueDate(e.target.value)} />
+            </div>
+            <div className="w-32">
+              <label className="block text-xs text-text-secondary mb-1">Ώρα</label>
+              <input type="time" className="input w-full" value={due_time} onChange={e => setDueTime(e.target.value)} />
+            </div>
           </div>
           {!hideCaseField && (
             <div>

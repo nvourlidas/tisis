@@ -5,7 +5,6 @@ export type Contact = {
   phone: string | null;
   phone2: string | null;
   email: string | null;
-  role: string | null;
   notes: string | null;
   vat: string | null;
   address: string | null;
@@ -30,7 +29,6 @@ export type ContactFormData = {
   phone: string;
   phone2: string;
   email: string;
-  role: string;
   notes: string;
   vat: string;
   address: string;

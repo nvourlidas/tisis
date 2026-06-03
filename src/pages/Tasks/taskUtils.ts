@@ -49,6 +49,7 @@ export type Task = {
   title: string;
   description: string | null;
   due_date: string | null;
+  due_time: string | null;
   status: 'open' | 'done';
   completed_at: string | null;
   created_at: string;
@@ -96,6 +97,7 @@ function mapTask(r: any): Task {
   return {
     ...r,
     due_date: r.due_date ? r.due_date.slice(0, 10) : null,
+    due_time: r.due_time ? r.due_time.slice(0, 5) : null,
     case_code: r.cases?.code ?? null,
     case_title: r.cases?.title ?? null,
     client_name: r.cases?.clients?.name ?? null,
@@ -204,6 +206,7 @@ export async function updateTask(form: {
   title: string;
   description: string;
   due_date: string;
+  due_time?: string;
   case_id?: string | null;
   category?: string;
   extra_data?: object | null;
@@ -232,7 +235,7 @@ export async function searchTasks(tenantId: string, query: string, excludeId?: s
     .select('id, title, due_date, status, category')
     .eq('tenant_id', tenantId)
     .ilike('title', `%${query}%`)
-    .limit(200);
+    .limit(20);
   if (excludeId) q = q.neq('id', excludeId);
   const { data } = await q;
   return (data ?? []).map(r => ({
@@ -262,6 +265,7 @@ export async function createTask(_tenantId: string, form: {
   title: string;
   description: string;
   due_date: string;
+  due_time?: string;
   case_id: string;
   category?: string;
   extra_data?: object | null;
@@ -284,6 +288,23 @@ export type TaskPayment = {
   notes: string | null;
   created_at: string;
 };
+
+export async function addTaskLink(tenantId: string, taskId: string, linkedTaskId: string): Promise<void> {
+  const { error } = await supabase.from('task_links').upsert(
+    { tenant_id: tenantId, task_id: taskId, linked_task_id: linkedTaskId },
+    { onConflict: 'task_id,linked_task_id' },
+  );
+  if (error) throw error;
+}
+
+export async function removeTaskLink(taskId: string, linkedTaskId: string): Promise<void> {
+  const { error } = await supabase
+    .from('task_links')
+    .delete()
+    .eq('task_id', taskId)
+    .eq('linked_task_id', linkedTaskId);
+  if (error) throw error;
+}
 
 export async function fetchTaskPayments(taskId: string): Promise<TaskPayment[]> {
   const { data, error } = await supabase

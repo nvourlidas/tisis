@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
     const auth = await authenticate(req)
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
-    const { id, title, description, due_date, case_id, category, extra_data, fee, expenses, linked_task_ids } = await req.json()
+    const { id, title, description, due_date, due_time, case_id, category, extra_data, fee, expenses, linked_task_ids } = await req.json()
     if (!id) return json({ error: 'id is required' }, 400)
     if (!title?.trim()) return json({ error: 'title is required' }, 400)
     const { error } = await supabase
@@ -16,6 +16,7 @@ Deno.serve(async (req) => {
         title: title.trim(),
         description: description || null,
         due_date: due_date || null,
+        due_time: due_time || null,
         case_id: case_id || null,
         category: category || null,
         extra_data: extra_data || null,
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
     await syncCalendar(
       Deno.env.get('SUPABASE_URL')!,
       req.headers.get('Authorization')!,
-      { action: 'update', google_event_id: task?.google_event_id, title: title.trim(), description: description || null, due_date: due_date || null },
+      { action: 'update', google_event_id: task?.google_event_id, title: title.trim(), description: description || null, due_date: due_date || null, due_time: due_time || null },
     )
     return json({ ok: true })
   } catch (e) { return json({ error: e.message }, 500) }

@@ -99,7 +99,7 @@ export default function Dashboard() {
   const today = new Date().toISOString().slice(0, 10);
   const overdue = tasks.filter((t) => t.status === 'open' && t.due_date && t.due_date < today);
   const todayTasks = tasks.filter((t) => t.status === 'open' && t.due_date === today);
-  const unlinkedCalls = calls.filter((c) => !c.case_id);
+  const unlinkedCalls = calls.filter((c) => !c.case_id && !c.no_case_intentional);
 
   return (
     <div className="p-6 space-y-6">

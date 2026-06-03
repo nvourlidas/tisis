@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { ContactFormData } from '../types';
-import RoleSelect from '../../../components/RoleSelect';
 
 type Props = {
   open: boolean;
@@ -13,13 +12,13 @@ type Props = {
 };
 
 const empty: ContactFormData = {
-  name: '', phone: '', phone2: '', email: '', role: '', notes: '',
+  name: '', phone: '', phone2: '', email: '', notes: '',
   vat: '', address: '', job_title: '', organization: '', website: '',
   father_name: '', mother_name: '', birthdate: '',
   amka: '', iban: '', at: '', taxis_username: '', taxis_password: '',
 };
 
-export default function NewContactModal({ open, onClose, onSubmit, initialPhone, tenantId = '', zIndex = 'z-50' }: Props) {
+export default function NewContactModal({ open, onClose, onSubmit, initialPhone, zIndex = 'z-50' }: Props) {
   const [form, setForm] = useState<ContactFormData>(() => ({ ...empty, phone: initialPhone ?? '' }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,15 +67,9 @@ export default function NewContactModal({ open, onClose, onSubmit, initialPhone,
               <input className="input w-full" value={form.phone2} onChange={set('phone2')} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">Email</label>
-              <input className="input w-full" type="email" value={form.email} onChange={set('email')} />
-            </div>
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">Ρόλος</label>
-              <RoleSelect tenantId={tenantId} value={form.role} onChange={v => setForm(f => ({ ...f, role: v }))} />
-            </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Email</label>
+            <input className="input w-full" type="email" value={form.email} onChange={set('email')} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

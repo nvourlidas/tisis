@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Check, Clock, Tag, CalendarDays, Briefcase, User,
@@ -9,6 +9,7 @@ import { formatDate } from '../../lib/dateUtils';
 import {
   fetchTask, fetchLinkedTasks, completeTask, reopenTask, updateTask,
   fetchTaskPayments, createTaskPayment, deleteTaskPayment,
+  addTaskLink, removeTaskLink, searchTasks,
   TASK_CATEGORIES,
   type Task, type LinkedTask, type LegalActData, type AppointmentData, type CourtData, type TaskPayment,
 } from './taskUtils';
@@ -28,6 +29,43 @@ export default function TaskDetail() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // linked task search state
+  const [linkSearch, setLinkSearch] = useState('');
+  const [linkResults, setLinkResults] = useState<LinkedTask[]>([]);
+  const [linkSearching, setLinkSearching] = useState(false);
+  const [showLinkSearch, setShowLinkSearch] = useState(false);
+  const linkDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleLinkSearch = (q: string) => {
+    setLinkSearch(q);
+    setLinkResults([]);
+    if (linkDebounceRef.current) clearTimeout(linkDebounceRef.current);
+    if (q.trim().length < 2) { setLinkSearching(false); return; }
+    setLinkSearching(true);
+    linkDebounceRef.current = setTimeout(async () => {
+      const results = await searchTasks(tenantId, q, id);
+      setLinkResults(results.filter(r => !linkedTasks.some(lt => lt.id === r.id)).slice(0, 8));
+      setLinkSearching(false);
+    }, 300);
+  };
+
+  const handleAddLink = async (target: LinkedTask) => {
+    if (!id) return;
+    await addTaskLink(tenantId, id, target.id);
+    setLinkSearch('');
+    setLinkResults([]);
+    setShowLinkSearch(false);
+    const links = await fetchLinkedTasks(id);
+    setLinkedTasks(links);
+  };
+
+  const handleRemoveLink = async (linkedTaskId: string) => {
+    if (!id) return;
+    await removeTaskLink(id, linkedTaskId);
+    const links = await fetchLinkedTasks(id);
+    setLinkedTasks(links);
+  };
 
   // payment form state
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -99,6 +137,7 @@ export default function TaskDetail() {
         title: values.title,
         description: values.description,
         due_date: values.due_date,
+        due_time: values.due_time || undefined,
         case_id: values.case_id || null,
         category: values.category || undefined,
         extra_data: values.extra_data,
@@ -210,7 +249,7 @@ export default function TaskDetail() {
             <InfoCard
               icon={<CalendarDays className="h-3.5 w-3.5" />}
               label="Ημερομηνία"
-              value={formatDate(task.due_date)}
+              value={task.due_time ? `${formatDate(task.due_date)} ${task.due_time}` : formatDate(task.due_date)}
               color={isOverdue ? 'text-orange-500' : 'text-blue-500'}
               bg={isOverdue ? 'bg-orange-500/10' : 'bg-blue-500/10'}
             />
@@ -360,8 +399,8 @@ export default function TaskDetail() {
                 <div className="flex items-center gap-4 text-sm">
                   <span className="text-text-secondary">Σύνολο: <strong className="text-text-primary">{task.fee.toFixed(2)} €</strong></span>
                   <span className="text-green-500">Πληρωμένο: <strong>{totalPaid.toFixed(2)} €</strong></span>
-                  <span className={remaining > 0 ? 'text-orange-400' : 'text-green-500'}>
-                    Υπόλοιπο: <strong>{remaining.toFixed(2)} €</strong>
+                  <span className={remaining < 0 ? 'text-green-500' : remaining > 0 ? 'text-orange-400' : 'text-green-500'}>
+                    Υπόλοιπο: <strong>{remaining < 0 ? '+' : ''}{Math.abs(remaining).toFixed(2)} €</strong>
                   </span>
                 </div>
                 {/* Progress bar */}
@@ -453,17 +492,69 @@ export default function TaskDetail() {
       )}
 
       {/* Linked tasks */}
-      <Section title="Συνδεδεμένες Εργασίες" icon={<Link2 className="h-4 w-4" />}>
-        {linkedTasks.length === 0 ? (
+      <div className="animate-fade-in-up rounded-2xl border border-border/10 bg-secondary-background p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            Συνδεδεμένες Εργασίες
+          </h2>
+          <button
+            onClick={() => { setShowLinkSearch(s => !s); setLinkSearch(''); setLinkResults([]); }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Σύνδεση
+          </button>
+        </div>
+
+        {showLinkSearch && (
+          <div className="relative">
+            <input
+              autoFocus
+              type="text"
+              value={linkSearch}
+              onChange={e => handleLinkSearch(e.target.value)}
+              placeholder="Αναζήτηση εργασίας…"
+              className="w-full rounded-lg border border-border/20 bg-background px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40"
+            />
+            {linkSearching && (
+              <div className="absolute right-3 top-2.5">
+                <RotateCcw className="h-4 w-4 animate-spin text-text-secondary" />
+              </div>
+            )}
+            {linkResults.length > 0 && (
+              <div className="absolute z-20 mt-1 w-full rounded-xl border border-border/20 bg-secondary-background shadow-xl overflow-hidden">
+                {linkResults.map(r => (
+                  <button
+                    key={r.id}
+                    onClick={() => handleAddLink(r)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/6 transition-colors cursor-pointer"
+                  >
+                    <span className="flex-1 text-sm text-text-primary truncate">{r.title}</span>
+                    {r.category && <span className="text-[10px] text-text-secondary shrink-0">{TASK_CATEGORIES[r.category]}</span>}
+                    {r.due_date && <span className="text-[10px] text-text-secondary shrink-0">{formatDate(r.due_date)}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {linkSearch.trim() && !linkSearching && linkResults.length === 0 && (
+              <div className="absolute z-20 mt-1 w-full rounded-xl border border-border/20 bg-secondary-background shadow-xl px-4 py-3 text-sm text-text-secondary">
+                Δεν βρέθηκαν εργασίες.
+              </div>
+            )}
+          </div>
+        )}
+
+        {linkedTasks.length === 0 && !showLinkSearch ? (
           <p className="text-sm text-text-secondary">Δεν υπάρχουν συνδεδεμένες εργασίες.</p>
         ) : (
           <div className="space-y-2">
             {linkedTasks.map(t => (
-              <LinkedTaskRow key={t.id} task={t} onClick={() => navigate(`/tasks/${t.id}`)} />
+              <LinkedTaskRow key={t.id} task={t} onClick={() => navigate(`/tasks/${t.id}`)} onUnlink={() => handleRemoveLink(t.id)} />
             ))}
           </div>
         )}
-      </Section>
+      </div>
 
       {/* Edit modal */}
       {editing && (
@@ -534,20 +625,21 @@ function InfoCard({ icon, label, value, color = 'text-text-secondary', bg = 'bg-
   );
 }
 
-function LinkedTaskRow({ task, onClick }: { task: LinkedTask; onClick: () => void }) {
+function LinkedTaskRow({ task, onClick, onUnlink }: { task: LinkedTask; onClick: () => void; onUnlink?: () => void }) {
   const today = new Date().toISOString().slice(0, 10);
   const isOverdue = task.status === 'open' && !!task.due_date && task.due_date < today;
   const isDone = task.status === 'done';
 
   return (
+    <div className={[
+      'flex items-center gap-2 rounded-xl border group',
+      isDone ? 'border-green-500/15 bg-green-500/5 opacity-70' :
+      isOverdue ? 'border-orange-500/20 bg-orange-500/5' :
+      'border-border/10 bg-white/2 hover:bg-white/4',
+    ].join(' ')}>
     <button
       onClick={onClick}
-      className={[
-        'w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors cursor-pointer hover:-translate-y-0.5 transition-transform',
-        isDone ? 'border-green-500/15 bg-green-500/5 opacity-70' :
-        isOverdue ? 'border-orange-500/20 bg-orange-500/5' :
-        'border-border/10 bg-white/2 hover:bg-white/4',
-      ].join(' ')}
+      className="flex-1 flex items-center gap-3 px-4 py-3 text-left cursor-pointer hover:-translate-y-0.5 transition-transform"
     >
       <div className={[
         'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
@@ -568,5 +660,14 @@ function LinkedTaskRow({ task, onClick }: { task: LinkedTask; onClick: () => voi
         </span>
       )}
     </button>
+    {onUnlink && (
+      <button
+        onClick={e => { e.stopPropagation(); onUnlink(); }}
+        className="opacity-0 group-hover:opacity-100 pr-3 text-text-secondary hover:text-red-400 transition-all cursor-pointer shrink-0"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    )}
+    </div>
   );
 }

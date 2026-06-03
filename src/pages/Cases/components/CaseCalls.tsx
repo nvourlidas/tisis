@@ -188,7 +188,7 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
                 </div>
                 <div className="shrink-0 flex items-center gap-1">
                   <button
-                    onClick={() => setEditCall({ ...call, tenant_id: tenantId, case_id: caseId, client_id: null, contact_id: null, case_code: null, case_title: null })}
+                    onClick={() => setEditCall({ ...call, tenant_id: tenantId, case_id: caseId, client_id: null, contact_id: null, case_code: null, case_title: null, no_case_intentional: false })}
                     className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary hover:text-text-primary cursor-pointer transition-colors"
                     title="Επεξεργασία"
                   >

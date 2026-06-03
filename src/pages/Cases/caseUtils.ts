@@ -111,7 +111,7 @@ export async function updateCase(id: string, form: Partial<CaseFormData>): Promi
 export async function fetchCaseContacts(caseId: string): Promise<CaseContact[]> {
   const { data, error } = await supabase
     .from('case_contacts')
-    .select('contact_id, contacts(name, phone, email, role)')
+    .select('contact_id, role, contacts(name, phone, email)')
     .eq('case_id', caseId);
   if (error) throw error;
   return (data ?? []).map((r: any) => ({
@@ -119,12 +119,23 @@ export async function fetchCaseContacts(caseId: string): Promise<CaseContact[]> 
     name: r.contacts?.name,
     phone: r.contacts?.phone ?? null,
     email: r.contacts?.email ?? null,
-    role: r.contacts?.role ?? null,
+    role: r.role ?? null,
   }));
 }
 
-export async function addContactToCase(caseId: string, contactId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke('case-contact-add', { body: { case_id: caseId, contact_id: contactId } });
+export async function addContactToCase(caseId: string, contactId: string, role?: string): Promise<void> {
+  const { error } = await supabase
+    .from('case_contacts')
+    .insert({ case_id: caseId, contact_id: contactId, role: role || null });
+  if (error) throw error;
+}
+
+export async function updateCaseContactRole(caseId: string, contactId: string, role: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('case_contacts')
+    .update({ role: role || null })
+    .eq('case_id', caseId)
+    .eq('contact_id', contactId);
   if (error) throw error;
 }
 

@@ -150,8 +150,8 @@ export default function CaseFinancials({ caseId, tenantId }: Props) {
           iconBg="bg-orange-500/10"
           iconColor="text-orange-500"
           label="Υπόλοιπο"
-          value={formatEur(balance)}
-          valueColor="text-orange-500"
+          value={(balance < 0 ? '+' : '') + formatEur(Math.abs(balance))}
+          valueColor={balance < 0 ? 'text-green-500' : 'text-orange-500'}
         />
       </div>
 

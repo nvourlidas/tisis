@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { fetchContactRoles } from '../lib/roleUtils';
 import type { ContactRole } from '../lib/roleUtils';
@@ -13,11 +13,27 @@ type Props = {
 export default function RoleSelect({ tenantId, value, onChange, placeholder = 'Επιλογή ρόλου…' }: Props) {
   const [roles, setRoles] = useState<ContactRole[]>([]);
   const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!tenantId) return;
     fetchContactRoles(tenantId).then(setRoles);
   }, [tenantId]);
+
+  const openDropdown = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    }
+    setOpen(v => !v);
+  };
 
   const select = (name: string) => {
     onChange(name);
@@ -29,8 +45,9 @@ export default function RoleSelect({ tenantId, value, onChange, placeholder = '�
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen(v => !v)}
+        onClick={openDropdown}
         className="input w-full flex items-center justify-between gap-2 cursor-pointer text-left"
       >
         <span className={`flex items-center gap-1.5 ${value ? 'text-text-primary' : 'text-text-secondary'}`}>
@@ -44,8 +61,8 @@ export default function RoleSelect({ tenantId, value, onChange, placeholder = '�
 
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 mt-1 w-full rounded-xl border border-border/10 bg-secondary-background shadow-xl overflow-hidden">
+          <div className="fixed inset-0 z-9998" onClick={() => setOpen(false)} />
+          <div style={dropdownStyle} className="rounded-xl border border-border/10 bg-secondary-background shadow-xl overflow-hidden">
             {roles.length === 0 ? (
               <p className="px-4 py-3 text-sm text-text-secondary">Δεν υπάρχουν ρόλοι. Προσθέστε από τη σελίδα Επαφών.</p>
             ) : (

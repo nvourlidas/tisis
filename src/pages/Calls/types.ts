@@ -11,6 +11,7 @@ export type Call = {
   contact_id: string | null;
   description: string | null;
   follow_up_required: boolean;
+  no_case_intentional: boolean;
   created_at: string;
   // joined
   case_code?: string | null;
@@ -25,6 +26,7 @@ export type CallFormData = {
   contact_id: string;
   description: string;
   follow_up_required: boolean;
+  no_case_intentional: boolean;
   create_task: boolean;
   task_title: string;
   task_due_date: string;

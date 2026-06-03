@@ -202,7 +202,7 @@ export default function Calls() {
     });
   }, [calls, directionFilter, linkedFilter, search, dateFrom, dateTo]);
 
-  const unlinkedCount = calls.filter((c) => !c.case_id).length;
+  const unlinkedCount = calls.filter((c) => !c.case_id && !c.no_case_intentional).length;
 
   const columns: ColumnDef<Call>[] = [
     {
@@ -427,7 +427,7 @@ export default function Calls() {
             data={filteredCalls}
             rowKey={(c) => c.id}
             onRowClick={(c) => { if (c.case_id) navigate(`/cases/${c.case_id}`); }}
-            rowClassName={(c) => !c.case_id ? 'bg-orange-500/5' : ''}
+            rowClassName={(c) => (!c.case_id && !c.no_case_intentional) ? 'bg-orange-500/5' : ''}
             emptyState={
               <div className="flex flex-col items-center justify-center py-12 text-text-secondary gap-3">
                 <div className="w-14 h-14 rounded-2xl bg-border/5 flex items-center justify-center">

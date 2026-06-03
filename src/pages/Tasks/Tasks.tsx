@@ -7,7 +7,7 @@ import {
 import { useAuth } from '../../auth';
 import { supabase } from '../../lib/supabase';
 import {
-  fetchTasksForMonth, fetchTaskCounts, completeTask, reopenTask, createTask, updateTask, deleteTask,
+  fetchTasksForMonth, fetchTaskCounts, fetchDashboardOpenTasks, completeTask, reopenTask, createTask, updateTask, deleteTask,
   searchFullTasks,
   TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData, type CourtData,
 } from './taskUtils';
@@ -81,6 +81,9 @@ export default function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [noDueDateTasksRaw, setNoDueDateTasksRaw] = useState<Task[]>([]);
+  const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
+  const [overduePage, setOverduePage] = useState(0);
+  const OVERDUE_PAGE_SIZE = 10;
   const [counts, setCounts] = useState<{ open: number; done: number }>({ open: 0, done: 0 });
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -146,11 +149,13 @@ export default function Tasks() {
       fetchTasksForMonth(tenantId, y, m),
       fetchTaskCounts(tenantId),
       fetchCallsForMonth(tenantId, y, m),
-    ]).then(([{ tasks: t, noDueDateTasks: nd }, c, cl]) => {
+      fetchDashboardOpenTasks(tenantId),
+    ]).then(([{ tasks: t, noDueDateTasks: nd }, c, cl, ov]) => {
       setTasks(t);
       setNoDueDateTasksRaw(nd);
       setCounts(c);
       setCalls(cl);
+      setOverdueTasks(ov);
     }).finally(() => setLoading(false));
   };
 
@@ -175,6 +180,7 @@ export default function Tasks() {
         title: values.title,
         description: values.description,
         due_date: values.due_date,
+        due_time: values.due_time || undefined,
         case_id: values.case_id,
         category: values.category || undefined,
         extra_data: values.extra_data,
@@ -201,6 +207,7 @@ export default function Tasks() {
         title: values.title,
         description: values.description,
         due_date: values.due_date,
+        due_time: values.due_time || undefined,
         case_id: values.case_id || null,
         category: values.category || undefined,
         extra_data: values.extra_data,
@@ -560,6 +567,7 @@ export default function Tasks() {
         </div>
       ) : (
         <div className="animate-fade-in-up stagger-2 space-y-5">
+          <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-5 items-start">
           <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -760,6 +768,57 @@ export default function Tasks() {
             )}
           </div>
 
+          {/* Overdue widget */}
+          <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0">
+                <AlertCircle className="h-4 w-4" />
+              </div>
+              <h2 className="text-sm font-semibold text-text-primary">Ληξιπρόθεσμες εργασίες</h2>
+              {overdueTasks.length > 0 && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-500">{overdueTasks.length}</span>
+              )}
+            </div>
+            {overdueTasks.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-6 text-text-secondary">
+                <AlertCircle className="h-8 w-8 opacity-20" />
+                <p className="text-sm">Δεν υπάρχουν ληξιπρόθεσμες εργασίες.</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {overdueTasks.slice(overduePage * OVERDUE_PAGE_SIZE, (overduePage + 1) * OVERDUE_PAGE_SIZE).map(task => (
+                    <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
+                      onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
+                  ))}
+                </div>
+                {Math.ceil(overdueTasks.length / OVERDUE_PAGE_SIZE) > 1 && (
+                  <div className="flex items-center justify-between pt-2 border-t border-border/10 mt-2">
+                    <button
+                      onClick={() => setOverduePage(p => p - 1)}
+                      disabled={overduePage === 0}
+                      className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-border/5 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <span className="text-xs text-text-secondary">
+                      {overduePage + 1} / {Math.ceil(overdueTasks.length / OVERDUE_PAGE_SIZE)}
+                    </span>
+                    <button
+                      onClick={() => setOverduePage(p => p + 1)}
+                      disabled={overduePage >= Math.ceil(overdueTasks.length / OVERDUE_PAGE_SIZE) - 1}
+                      className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-border/5 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          </div>{/* end grid */}
+
           {noDueDateTasks.length > 0 && (
             <div className="rounded-xl border border-orange-500/15 bg-orange-500/5 p-5 space-y-3">
               <div className="flex items-center gap-2">
@@ -930,6 +989,7 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavig
           {task.due_date && (
             <span className={`text-[14px] font-medium px-1.5 py-0.5 rounded ${color ? DUE_COLOR_CHIP[color] : done ? 'text-text-secondary' : 'bg-white/8 text-text-secondary'}`}>
               {new Date(task.due_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              {task.due_time && <span className="ml-1 opacity-80">{task.due_time}</span>}
             </span>
           )}
           {color && (

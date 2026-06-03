@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Phone, Mail, Tag, FileText, MapPin, Pencil, Check, X,
+  ArrowLeft, Phone, Mail, FileText, MapPin, Pencil, Check, X,
   UserCheck, ExternalLink, Trash2, Users, CalendarDays, ShieldCheck,
-  CreditCard, KeyRound, RotateCcw, Briefcase, Building2, Globe,
+  CreditCard, KeyRound, RotateCcw, Briefcase, Building2, Globe, PhoneIncoming, PhoneCall, Plus, Link2,
 } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchContact, fetchContactCases, updateContact, deleteContact, fetchLinkedClient, promoteContactToClient } from './contactUtils';
-import { fetchContactRoles } from '../../lib/roleUtils';
+import { fetchCallsByContact, searchCallsForLinking, updateCall } from '../Calls/callUtils';
+import type { Call } from '../Calls/types';
+import NewCallModal from '../Calls/modals/NewCallModal';
 import type { Contact, ContactCase } from './types';
 import type { Client } from '../Clients/types';
-import type { ContactRole } from '../../lib/roleUtils';
-import RoleSelect from '../../components/RoleSelect';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Ενεργή',
@@ -61,6 +61,14 @@ export default function ContactDetail() {
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [cases, setCases] = useState<ContactCase[]>([]);
+  const [calls, setCalls] = useState<Call[]>([]);
+  const [activeTab, setActiveTab] = useState<'cases' | 'events'>('cases');
+  const [showNewCallModal, setShowNewCallModal] = useState(false);
+  const [showLinkPanel, setShowLinkPanel] = useState(false);
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkResults, setLinkResults] = useState<Call[]>([]);
+  const [linkSearching, setLinkSearching] = useState(false);
+  const [linking, setLinking] = useState<string | null>(null);
   const [linkedClient, setLinkedClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -70,17 +78,15 @@ export default function ContactDetail() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [roles, setRoles] = useState<ContactRole[]>([]);
-
   useEffect(() => {
     if (!id || !tenantId) return;
     setLoading(true);
-    Promise.all([fetchContact(id), fetchContactCases(id), fetchContactRoles(tenantId)])
-      .then(([c, cc, r]) => {
+    Promise.all([fetchContact(id), fetchContactCases(id), fetchCallsByContact(id)])
+      .then(([c, cc, cls]) => {
         setContact(c);
         setForm(c ?? {});
         setCases(cc);
-        setRoles(r);
+        setCalls(cls);
         if (c?.is_client) fetchLinkedClient(id).then(setLinkedClient);
       })
       .finally(() => setLoading(false));
@@ -96,7 +102,7 @@ export default function ContactDetail() {
     try {
       await updateContact(id, {
         name: form.name, phone: form.phone ?? '', phone2: form.phone2 ?? '',
-        email: form.email ?? '', role: form.role ?? '', notes: form.notes ?? '',
+        email: form.email ?? '', notes: form.notes ?? '',
         vat: form.vat ?? '', address: form.address ?? '',
         job_title: form.job_title ?? '', organization: form.organization ?? '', website: form.website ?? '',
         father_name: form.father_name ?? '', mother_name: form.mother_name ?? '',
@@ -151,8 +157,6 @@ export default function ContactDetail() {
   );
   if (!contact) return <div className="p-6 text-sm text-text-secondary">Η επαφή δεν βρέθηκε.</div>;
 
-  const currentRole = roles.find(r => r.name === contact.role);
-
   return (
     <div className="p-6 space-y-6">
       {/* Back */}
@@ -186,15 +190,6 @@ export default function ContactDetail() {
                 {contact.is_client && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/20">
                     Εντολέας
-                  </span>
-                )}
-                {currentRole && !editing && (
-                  <span
-                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
-                    style={{ backgroundColor: currentRole.color + '25', color: currentRole.color }}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: currentRole.color }} />
-                    {contact.role}
                   </span>
                 )}
                 {contact.is_client && linkedClient && (
@@ -309,10 +304,6 @@ export default function ContactDetail() {
               </div>
             ))}
             <div>
-              <label className="block text-xs text-text-secondary mb-1">Ρόλος</label>
-              <RoleSelect tenantId={tenantId} value={form.role ?? ''} onChange={v => setForm(f => ({ ...f, role: v }))} />
-            </div>
-            <div>
               <label className="block text-xs text-text-secondary mb-1">Taxisnet Password</label>
               <input className="input w-full" value={(form.taxis_password as string) ?? ''} onChange={set('taxis_password')} />
             </div>
@@ -328,28 +319,6 @@ export default function ContactDetail() {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {contact.role && (() => {
-                const role = roles.find(r => r.name === contact.role);
-                return role ? (
-                  <InfoCard
-                    icon={<Tag className="h-4 w-4" />}
-                    iconColor="text-primary"
-                    iconBg="bg-primary/10"
-                    label="Ρόλος"
-                    value={
-                      <span
-                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
-                        style={{ backgroundColor: role.color + '25', color: role.color }}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
-                        {contact.role}
-                      </span>
-                    }
-                  />
-                ) : (
-                  <InfoCard icon={FIELD_META.taxis_username.icon} iconColor={FIELD_META.taxis_username.color} iconBg={FIELD_META.taxis_username.bg} label="Ρόλος" value={<span className="text-sm text-text-primary">{contact.role}</span>} />
-                );
-              })()}
               {([
                 ['phone', 'Τηλέφωνο', contact.phone],
                 ['phone2', 'Τηλέφωνο 2', contact.phone2],
@@ -390,51 +359,221 @@ export default function ContactDetail() {
         )}
       </div>
 
-      {/* Linked cases */}
+      {/* Tabs: Cases / Γεγονότα */}
       <div className="animate-fade-in-up stagger-2 space-y-3">
-        <h2 className="text-sm font-semibold text-text-primary">
-          Συνδεδεμένες Υποθέσεις
-          <span className="ml-2 text-xs font-normal text-text-secondary">({cases.length})</span>
-        </h2>
-        {cases.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-8 text-text-secondary">
-            <div className="w-10 h-10 rounded-xl bg-border/5 flex items-center justify-center">
-              <Briefcase className="h-5 w-5 opacity-30" />
+        <div className="flex gap-1 border-b border-border/10">
+          {(['cases', 'events'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px ${
+                activeTab === tab
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {tab === 'cases'
+                ? <>Υποθέσεις <span className="ml-1 text-xs opacity-60">({cases.length})</span></>
+                : <>Γεγονότα <span className="ml-1 text-xs opacity-60">({calls.length})</span></>}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'cases' && (
+          cases.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-8 text-text-secondary">
+              <div className="w-10 h-10 rounded-xl bg-border/5 flex items-center justify-center">
+                <Briefcase className="h-5 w-5 opacity-30" />
+              </div>
+              <p className="text-sm">Η επαφή δεν είναι συνδεδεμένη σε καμία υπόθεση.</p>
             </div>
-            <p className="text-sm">Η επαφή δεν είναι συνδεδεμένη σε καμία υπόθεση.</p>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-border/10 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-white/3 border-b border-border/10 text-text-secondary text-xs uppercase tracking-wider">
-                  <th className="text-left px-4 py-2.5 font-medium">Κωδικός</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Τίτλος</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Κατάσταση</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/10">
-                {cases.map((c) => (
-                  <tr
-                    key={c.case_id}
-                    onClick={() => navigate(`/cases/${c.case_id}`)}
-                    className="hover:bg-white/3 cursor-pointer transition-colors"
-                  >
-                    <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{c.code}</td>
-                    <td className="px-4 py-2.5 text-text-primary">{c.title}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status] ?? STATUS_BADGE.closed}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[c.status] ?? 'bg-border'}`} />
-                        {STATUS_LABELS[c.status] ?? c.status}
-                      </span>
-                    </td>
+          ) : (
+            <div className="rounded-xl border border-border/10 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-white/3 border-b border-border/10 text-text-secondary text-xs uppercase tracking-wider">
+                    <th className="text-left px-4 py-2.5 font-medium">Κωδικός</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Τίτλος</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Κατάσταση</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border/10">
+                  {cases.map((c) => (
+                    <tr
+                      key={c.case_id}
+                      onClick={() => navigate(`/cases/${c.case_id}`)}
+                      className="hover:bg-white/3 cursor-pointer transition-colors"
+                    >
+                      <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{c.code}</td>
+                      <td className="px-4 py-2.5 text-text-primary">{c.title}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status] ?? STATUS_BADGE.closed}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[c.status] ?? 'bg-border'}`} />
+                          {STATUS_LABELS[c.status] ?? c.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        {activeTab === 'events' && (
+          <div className="space-y-3">
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowNewCallModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Νέο Γεγονός
+              </button>
+              <button
+                onClick={() => { setShowLinkPanel(v => !v); setLinkQuery(''); setLinkResults([]); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Σύνδεση Γεγονότος
+              </button>
+            </div>
+
+            {/* Link panel */}
+            {showLinkPanel && (
+              <div className="rounded-xl border border-border/10 bg-secondary-background p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-text-primary">Αναζήτηση γεγονότος για σύνδεση</p>
+                  <button onClick={() => setShowLinkPanel(false)} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Όνομα, τηλέφωνο ή περιγραφή…"
+                  value={linkQuery}
+                  onChange={async e => {
+                    const q = e.target.value;
+                    setLinkQuery(q);
+                    if (q.trim().length < 2) { setLinkResults([]); return; }
+                    setLinkSearching(true);
+                    try {
+                      const res = await searchCallsForLinking(tenantId, q);
+                      setLinkResults(res);
+                    } finally {
+                      setLinkSearching(false);
+                    }
+                  }}
+                  className="w-full bg-background border border-border/15 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-primary/40"
+                />
+                {linkSearching && <p className="text-xs text-text-secondary">Αναζήτηση…</p>}
+                {!linkSearching && linkQuery.trim().length >= 2 && linkResults.length === 0 && (
+                  <p className="text-xs text-text-secondary">Δεν βρέθηκαν αποτελέσματα.</p>
+                )}
+                {linkResults.length > 0 && (
+                  <div className="divide-y divide-border/10 rounded-lg border border-border/10 overflow-hidden">
+                    {linkResults.map(call => (
+                      <div key={call.id} className="flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-white/3 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-text-primary truncate">{call.caller_name || '—'}</p>
+                          <p className="text-xs text-text-secondary truncate">{call.description || call.phone || '—'} · {new Date(call.created_at).toLocaleDateString('el-GR')}</p>
+                        </div>
+                        <button
+                          disabled={linking === call.id}
+                          onClick={async () => {
+                            setLinking(call.id);
+                            try {
+                              await updateCall(call.id, { contact_id: contact.id });
+                              const updated = await fetchCallsByContact(id!);
+                              setCalls(updated);
+                              setLinkResults(r => r.filter(c => c.id !== call.id));
+                            } finally {
+                              setLinking(null);
+                            }
+                          }}
+                          className="shrink-0 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {linking === call.id ? <RotateCcw className="h-3 w-3 animate-spin" /> : 'Σύνδεση'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Call list */}
+            {calls.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-text-secondary">
+                <div className="w-10 h-10 rounded-xl bg-border/5 flex items-center justify-center">
+                  <PhoneCall className="h-5 w-5 opacity-30" />
+                </div>
+                <p className="text-sm">Δεν υπάρχουν γεγονότα για αυτή την επαφή.</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border/10 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-white/3 border-b border-border/10 text-text-secondary text-xs uppercase tracking-wider">
+                      <th className="text-left px-4 py-2.5 font-medium">Τύπος</th>
+                      <th className="text-left px-4 py-2.5 font-medium">Τηλέφωνο</th>
+                      <th className="text-left px-4 py-2.5 font-medium">Υπόθεση</th>
+                      <th className="text-left px-4 py-2.5 font-medium">Περιγραφή</th>
+                      <th className="text-left px-4 py-2.5 font-medium">Ημ/νία</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/10">
+                    {calls.map(call => (
+                      <tr key={call.id} className="hover:bg-white/3 transition-colors">
+                        <td className="px-4 py-2.5">
+                          <span className="inline-flex items-center gap-1 text-xs">
+                            {call.direction === 'inperson'
+                              ? <PhoneCall className="h-3.5 w-3.5 text-teal-400" />
+                              : <PhoneIncoming className="h-3.5 w-3.5 text-blue-400" />}
+                            <span className="text-text-secondary">
+                              {call.direction === 'inperson' ? 'Αυτοπρόσωπα' : 'Τηλέφωνο'}
+                            </span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-text-secondary font-mono text-xs">{call.phone ?? '—'}</td>
+                        <td className="px-4 py-2.5">
+                          {call.case_code ? (
+                            <button
+                              onClick={() => navigate(`/cases/${call.case_id}`)}
+                              className="text-xs text-primary hover:underline cursor-pointer font-mono"
+                            >
+                              {call.case_code}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-orange-400">Χωρίς υπόθεση</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-text-secondary text-xs max-w-xs truncate">{call.description ?? '—'}</td>
+                        <td className="px-4 py-2.5 text-text-secondary text-xs whitespace-nowrap">
+                          {new Date(call.created_at).toLocaleDateString('el-GR')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      <NewCallModal
+        open={showNewCallModal}
+        onClose={() => setShowNewCallModal(false)}
+        onCreated={async () => {
+          setShowNewCallModal(false);
+          const updated = await fetchCallsByContact(id!);
+          setCalls(updated);
+        }}
+        initialContactId={contact.id}
+        initialContactName={contact.name}
+      />
     </div>
   );
 }

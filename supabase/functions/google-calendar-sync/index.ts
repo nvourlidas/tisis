@@ -63,11 +63,34 @@ async function ensureCalendar(accessToken: string, tenantId: string, supabase: a
   return cal.id
 }
 
-function buildEventBody(title: string, description: string | null, due_date: string | null) {
-  // If there's a due_date use it as an all-day event date; otherwise use today
+function buildEventBody(title: string, description: string | null, due_date: string | null, due_time: string | null) {
   const dateStr = due_date
     ? new Date(due_date).toISOString().split('T')[0]
     : new Date().toISOString().split('T')[0]
+
+  if (due_time) {
+    const [hStr, mStr] = due_time.split(':')
+    const h = parseInt(hStr, 10)
+    const m = mStr ?? '00'
+    // End = start + 1 hour, purely in local (Athens) time — no UTC conversion needed
+    const endH = (h + 1) % 24
+    // If end hour crosses midnight, advance the date
+    let endDateStr = dateStr
+    if (h + 1 >= 24) {
+      const d = new Date(dateStr + 'T00:00:00Z')
+      d.setUTCDate(d.getUTCDate() + 1)
+      endDateStr = d.toISOString().slice(0, 10)
+    }
+    const startDT = `${dateStr}T${String(h).padStart(2, '0')}:${m}:00`
+    const endDT = `${endDateStr}T${String(endH).padStart(2, '0')}:${m}:00`
+    return {
+      summary: title,
+      description: description ?? undefined,
+      start: { dateTime: startDT, timeZone: 'Europe/Athens' },
+      end: { dateTime: endDT, timeZone: 'Europe/Athens' },
+    }
+  }
+
   return {
     summary: title,
     description: description ?? undefined,
@@ -83,7 +106,7 @@ Deno.serve(async (req) => {
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
 
-    const { action, taskId, title, description, due_date, google_event_id } = await req.json()
+    const { action, taskId, title, description, due_date, due_time, google_event_id } = await req.json()
 
     const { data: tokenRow } = await supabase
       .from('tenant_google_tokens')
@@ -102,7 +125,7 @@ Deno.serve(async (req) => {
       const res = await fetch(`${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(buildEventBody(title, description, due_date)),
+        body: JSON.stringify(buildEventBody(title, description, due_date, due_time ?? null)),
       })
       const event = await res.json()
       if (!res.ok) throw new Error(event.error?.message ?? 'Failed to create calendar event')
@@ -120,7 +143,7 @@ Deno.serve(async (req) => {
       if (!google_event_id) return json({ ok: true, synced: false, reason: 'no_event_id' })
       const res = await fetch(
         `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(google_event_id)}`,
-        { method: 'PUT', headers, body: JSON.stringify(buildEventBody(title, description, due_date)) },
+        { method: 'PUT', headers, body: JSON.stringify(buildEventBody(title, description, due_date, due_time ?? null)) },
       )
       const event = await res.json()
       if (!res.ok) throw new Error(event.error?.message ?? 'Failed to update calendar event')

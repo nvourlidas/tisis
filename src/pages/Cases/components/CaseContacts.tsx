@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react';
-import { Plus, Trash2, Search, UserPlus, X, Users, RotateCcw } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Plus, Trash2, Search, UserPlus, X, Users, RotateCcw, Pencil, Check } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { fetchCaseContacts, addContactToCase, removeContactFromCase } from '../caseUtils';
+import { fetchCaseContacts, addContactToCase, removeContactFromCase, updateCaseContactRole } from '../caseUtils';
 import { createContact } from '../../Contacts/contactUtils';
+import { fetchContactRoles } from '../../../lib/roleUtils';
 import RoleSelect from '../../../components/RoleSelect';
+import NewContactModal from '../../Contacts/modals/NewContactModal';
 import type { CaseContact } from '../types';
+import type { ContactRole } from '../../../lib/roleUtils';
+import type { ContactFormData } from '../../Contacts/types';
 
 type Props = { caseId: string; tenantId: string };
-type ContactOption = { id: string; name: string; phone: string | null; role: string | null };
-type Mode = 'none' | 'search' | 'create';
-
-const emptyForm = { name: '', phone: '', phone2: '', email: '', role: '', notes: '' };
+type ContactOption = { id: string; name: string; phone: string | null };
+type Mode = 'none' | 'search';
 
 export default function CaseContacts({ caseId, tenantId }: Props) {
   const [contacts, setContacts] = useState<CaseContact[]>([]);
@@ -18,13 +20,27 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
   const [mode, setMode] = useState<Mode>('none');
   const [removing, setRemoving] = useState<string | null>(null);
 
+  // Search existing
   const [searchQ, setSearchQ] = useState('');
   const [options, setOptions] = useState<ContactOption[]>([]);
   const [searching, setSearching] = useState(false);
-
-  const [form, setForm] = useState({ ...emptyForm });
+  const [pendingContact, setPendingContact] = useState<ContactOption | null>(null);
+  const [addRole, setAddRole] = useState('');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // New contact modal
+  const [showNewContactModal, setShowNewContactModal] = useState(false);
+  const [newlyCreated, setNewlyCreated] = useState<{ id: string; name: string } | null>(null);
+  const [newContactRole, setNewContactRole] = useState('');
+  const [savingNewRole, setSavingNewRole] = useState(false);
+
+  // Inline role editing
+  const [editingRoleFor, setEditingRoleFor] = useState<string | null>(null);
+  const [editRoleValue, setEditRoleValue] = useState('');
+  const [savingRole, setSavingRole] = useState(false);
+
+  const [roles, setRoles] = useState<ContactRole[]>([]);
+  const roleMap = useMemo(() => new Map(roles.map(r => [r.name, r])), [roles]);
 
   const load = () => {
     setLoading(true);
@@ -32,6 +48,7 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
   };
 
   useEffect(() => { load(); }, [caseId]);
+  useEffect(() => { fetchContactRoles(tenantId).then(setRoles); }, [tenantId]);
 
   useEffect(() => {
     if (mode !== 'search' || !searchQ.trim()) { setOptions([]); return; }
@@ -39,7 +56,7 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
       setSearching(true);
       const { data } = await supabase
         .from('contacts')
-        .select('id, name, phone, role')
+        .select('id, name, phone')
         .eq('tenant_id', tenantId)
         .ilike('name', `%${searchQ.trim()}%`)
         .limit(10);
@@ -50,37 +67,67 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
     return () => clearTimeout(t);
   }, [searchQ, mode, tenantId, contacts]);
 
-  const openMode = (m: Mode) => {
-    setMode(prev => prev === m ? 'none' : m);
-    setSearchQ('');
-    setOptions([]);
-    setForm({ ...emptyForm });
-    setError(null);
-  };
-
-  const addExisting = async (contactId: string) => {
-    await addContactToCase(caseId, contactId);
+  const closeSearch = () => {
     setMode('none');
     setSearchQ('');
     setOptions([]);
+    setPendingContact(null);
+    setAddRole('');
+  };
+
+  const selectContact = (opt: ContactOption) => {
+    setPendingContact(opt);
+    setOptions([]);
+  };
+
+  const confirmAddExisting = async () => {
+    if (!pendingContact) return;
+    setSaving(true);
+    try {
+      await addContactToCase(caseId, pendingContact.id, addRole || undefined);
+      closeSearch();
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Called when NewContactModal submits — create contact, then show role picker
+  const handleNewContactSubmit = async (form: ContactFormData) => {
+    const created = await createContact(tenantId, form);
+    await addContactToCase(caseId, created.id);
+    setNewlyCreated({ id: created.id, name: created.name });
+    setNewContactRole('');
     load();
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) return;
-    setSaving(true);
-    setError(null);
+  const confirmNewContactRole = async () => {
+    if (!newlyCreated) return;
+    setSavingNewRole(true);
     try {
-      const newContact = await createContact(tenantId, { ...form, tenant_id: tenantId } as any);
-      await addContactToCase(caseId, newContact.id);
-      setMode('none');
-      setForm({ ...emptyForm });
-      load();
-    } catch (err: any) {
-      setError(err?.message ?? 'Αποτυχία δημιουργίας επαφής.');
+      if (newContactRole) {
+        await updateCaseContactRole(caseId, newlyCreated.id, newContactRole);
+        setContacts(prev => prev.map(c => c.contact_id === newlyCreated.id ? { ...c, role: newContactRole } : c));
+      }
+      setNewlyCreated(null);
     } finally {
-      setSaving(false);
+      setSavingNewRole(false);
+    }
+  };
+
+  const startEditRole = (contactId: string, currentRole: string | null) => {
+    setEditingRoleFor(contactId);
+    setEditRoleValue(currentRole ?? '');
+  };
+
+  const saveRole = async (contactId: string) => {
+    setSavingRole(true);
+    try {
+      await updateCaseContactRole(caseId, contactId, editRoleValue || null);
+      setContacts(prev => prev.map(c => c.contact_id === contactId ? { ...c, role: editRoleValue || null } : c));
+      setEditingRoleFor(null);
+    } finally {
+      setSavingRole(false);
     }
   };
 
@@ -101,7 +148,7 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
         <span className="text-sm text-text-secondary">{contacts.length} επαφές</span>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => openMode('search')}
+            onClick={() => setMode(prev => prev === 'search' ? 'none' : 'search')}
             className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm transition-all cursor-pointer ${
               mode === 'search' ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border/15 text-text-secondary hover:text-text-primary hover:bg-border/5'
             }`}
@@ -110,10 +157,8 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
             Προσθήκη υπάρχουσας
           </button>
           <button
-            onClick={() => openMode('create')}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm transition-all cursor-pointer ${
-              mode === 'create' ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border/15 text-text-secondary hover:text-text-primary hover:bg-border/5'
-            }`}
+            onClick={() => setShowNewContactModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             Νέα Επαφή
@@ -126,83 +171,90 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
         <div className="animate-fade-in-up rounded-xl border border-border/10 bg-secondary-background p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-text-primary">Προσθήκη υπάρχουσας επαφής</h3>
-            <button onClick={() => openMode('none')} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer transition-colors">
+            <button onClick={closeSearch} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer transition-colors">
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
-            <input
-              className="input w-full rounded-xl border-border/15 pl-9!"
-              placeholder="Αναζήτηση επαφής με όνομα…"
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              autoFocus
-            />
-          </div>
-          {searching && <p className="text-xs text-text-secondary flex items-center gap-1.5"><RotateCcw className="h-3 w-3 animate-spin" />Αναζήτηση…</p>}
-          {options.length > 0 && (
-            <div className="divide-y divide-border/10 rounded-xl border border-border/10 overflow-hidden">
-              {options.map((opt) => (
-                <button
-                  key={opt.id}
-                  onClick={() => addExisting(opt.id)}
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-border/5 cursor-pointer transition-colors"
-                >
-                  <div className="text-left">
-                    <div className="text-sm font-medium text-text-primary">{opt.name}</div>
-                    {(opt.phone || opt.role) && (
-                      <div className="text-xs text-text-secondary mt-0.5">{[opt.role, opt.phone].filter(Boolean).join(' · ')}</div>
-                    )}
-                  </div>
-                  <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                    <Plus className="h-3.5 w-3.5" />
-                  </div>
+          {!pendingContact ? (
+            <>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
+                <input
+                  className="input w-full rounded-xl border-border/15 pl-9!"
+                  placeholder="Αναζήτηση επαφής με όνομα…"
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              {searching && <p className="text-xs text-text-secondary flex items-center gap-1.5"><RotateCcw className="h-3 w-3 animate-spin" />Αναζήτηση…</p>}
+              {options.length > 0 && (
+                <div className="divide-y divide-border/10 rounded-xl border border-border/10 overflow-hidden">
+                  {options.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => selectContact(opt)}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-border/5 cursor-pointer transition-colors"
+                    >
+                      <div className="text-left">
+                        <div className="text-sm font-medium text-text-primary">{opt.name}</div>
+                        {opt.phone && <div className="text-xs text-text-secondary mt-0.5 font-mono">{opt.phone}</div>}
+                      </div>
+                      <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <Plus className="h-3.5 w-3.5" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {searchQ.trim() && !searching && options.length === 0 && (
+                <p className="text-xs text-text-secondary">Δεν βρέθηκαν επαφές.</p>
+              )}
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-lg bg-border/5 px-3 py-2">
+                <span className="text-sm font-medium text-text-primary">{pendingContact.name}</span>
+                {pendingContact.phone && <span className="text-xs text-text-secondary font-mono">{pendingContact.phone}</span>}
+                <button onClick={() => { setPendingContact(null); setSearchQ(''); }} className="ml-auto text-text-secondary hover:text-danger cursor-pointer transition-colors">
+                  <X className="h-3.5 w-3.5" />
                 </button>
-              ))}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">Ρόλος στην υπόθεση</label>
+                <RoleSelect tenantId={tenantId} value={addRole} onChange={setAddRole} />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => { setPendingContact(null); setSearchQ(''); }} className="px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:bg-border/5 cursor-pointer transition-all">Πίσω</button>
+                <button onClick={confirmAddExisting} disabled={saving} className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 cursor-pointer transition-all disabled:opacity-60">
+                  {saving ? 'Προσθήκη…' : 'Προσθήκη'}
+                </button>
+              </div>
             </div>
-          )}
-          {searchQ.trim() && !searching && options.length === 0 && (
-            <p className="text-xs text-text-secondary">Δεν βρέθηκαν επαφές.</p>
           )}
         </div>
       )}
 
-      {/* Create new contact */}
-      {mode === 'create' && (
-        <form onSubmit={handleCreate} className="animate-fade-in-up rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text-primary">Νέα Επαφή</h3>
-            <button type="button" onClick={() => openMode('none')} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary cursor-pointer transition-colors">
-              <X className="h-4 w-4" />
-            </button>
+      {/* Role picker after new contact creation */}
+      {newlyCreated && (
+        <div className="animate-fade-in-up rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Check className="h-4 w-4 text-primary shrink-0" />
+            <p className="text-sm font-medium text-text-primary">
+              <span className="text-primary">{newlyCreated.name}</span> προστέθηκε στην υπόθεση.
+            </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-text-secondary mb-1.5">Όνομα <span className="text-danger">*</span></label>
-              <input className="input w-full rounded-xl border-border/15" value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1.5">Τηλέφωνο</label>
-              <input className="input w-full rounded-xl border-border/15" value={form.phone} onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1.5">Email</label>
-              <input type="email" className="input w-full rounded-xl border-border/15" value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-text-secondary mb-1.5">Ρόλος</label>
-              <RoleSelect tenantId={tenantId} value={form.role} onChange={v => setForm(f => ({ ...f, role: v }))} />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5">Ρόλος στην υπόθεση <span className="opacity-60">(προαιρετικό)</span></label>
+            <RoleSelect tenantId={tenantId} value={newContactRole} onChange={setNewContactRole} />
           </div>
-          {error && <p className="text-sm text-danger bg-danger/5 border border-danger/20 rounded-xl px-4 py-2">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => openMode('none')} className="px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:bg-border/5 cursor-pointer transition-all">Ακύρωση</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 cursor-pointer transition-all disabled:opacity-60">
-              {saving ? 'Αποθήκευση…' : 'Δημιουργία & Προσθήκη'}
+            <button type="button" onClick={() => setNewlyCreated(null)} className="px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:bg-border/5 cursor-pointer transition-all">Παράλειψη</button>
+            <button onClick={confirmNewContactRole} disabled={savingNewRole || !newContactRole} className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 cursor-pointer transition-all disabled:opacity-60">
+              {savingNewRole ? 'Αποθήκευση…' : 'Αποθήκευση ρόλου'}
             </button>
           </div>
-        </form>
+        </div>
       )}
 
       {/* Contact list */}
@@ -218,7 +270,7 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
           <p className="text-sm">Δεν υπάρχουν επαφές σε αυτή την υπόθεση.</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border/10 overflow-hidden">
+        <div className="rounded-xl border border-border/10">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-border/5 border-b border-border/10 text-text-secondary text-xs uppercase tracking-wider">
@@ -234,10 +286,48 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
                 <tr key={c.contact_id} className="hover:bg-border/5 transition-colors">
                   <td className="px-4 py-3 font-medium text-text-primary">{c.name}</td>
                   <td className="px-4 py-3">
-                    {c.role
-                      ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">{c.role}</span>
-                      : <span className="text-text-secondary">—</span>
-                    }
+                    {editingRoleFor === c.contact_id ? (
+                      <div className="flex items-center gap-1.5">
+                        <RoleSelect tenantId={tenantId} value={editRoleValue} onChange={setEditRoleValue} />
+                        <button
+                          onClick={() => saveRole(c.contact_id)}
+                          disabled={savingRole}
+                          className="h-7 w-7 inline-flex items-center justify-center rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {savingRole ? <RotateCcw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        </button>
+                        <button
+                          onClick={() => setEditingRoleFor(null)}
+                          className="h-7 w-7 inline-flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary transition-colors cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => startEditRole(c.contact_id, c.role)}
+                        className="group inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {c.role ? (() => {
+                          const r = roleMap.get(c.role!);
+                          return r ? (
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium transition-opacity group-hover:opacity-80"
+                              style={{ backgroundColor: r.color + '25', color: r.color }}
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                              {c.role}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary group-hover:opacity-80 transition-opacity">{c.role}</span>
+                          );
+                        })() : (
+                          <span className="inline-flex items-center gap-1 text-text-secondary text-xs group-hover:text-text-primary transition-colors">
+                            —<Pencil className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                          </span>
+                        )}
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-text-secondary hidden sm:table-cell font-mono">{c.phone ?? '—'}</td>
                   <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{c.email ?? '—'}</td>
@@ -258,6 +348,14 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
           </table>
         </div>
       )}
+
+      <NewContactModal
+        open={showNewContactModal}
+        onClose={() => setShowNewContactModal(false)}
+        onSubmit={handleNewContactSubmit}
+        tenantId={tenantId}
+        zIndex="z-[60]"
+      />
     </div>
   );
 }

@@ -146,12 +146,45 @@ export type CallUpdateData = {
   description?: string;
   follow_up_required?: boolean;
   case_id?: string | null;
+  contact_id?: string | null;
   created_at?: string;
 };
+
+export async function searchCallsForLinking(tenantId: string, query: string): Promise<Call[]> {
+  const q = query.trim();
+  const { data, error } = await supabase
+    .from('calls')
+    .select('*, cases(code, title)')
+    .eq('tenant_id', tenantId)
+    .is('contact_id', null)
+    .or(`caller_name.ilike.%${q}%,phone.ilike.%${q}%,description.ilike.%${q}%`)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    case_code: r.cases?.code ?? null,
+    case_title: r.cases?.title ?? null,
+  }));
+}
 
 export async function updateCall(callId: string, data: CallUpdateData): Promise<void> {
   const { error } = await supabase.from('calls').update(data).eq('id', callId);
   if (error) throw error;
+}
+
+export async function fetchCallsByContact(contactId: string): Promise<Call[]> {
+  const { data, error } = await supabase
+    .from('calls')
+    .select('*, cases(code, title)')
+    .eq('contact_id', contactId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    case_code: r.cases?.code ?? null,
+    case_title: r.cases?.title ?? null,
+  }));
 }
 
 export async function deleteCall(callId: string): Promise<void> {

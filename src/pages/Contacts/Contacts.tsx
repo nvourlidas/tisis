@@ -5,15 +5,13 @@ import { supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { fetchContacts, createContact, searchContacts } from './contactUtils';
-import { fetchContactRoles } from '../../lib/roleUtils';
 import type { Contact, ContactFormData } from './types';
-import type { ContactRole } from '../../lib/roleUtils';
 import NewContactModal from './modals/NewContactModal';
 import RolesModal from './modals/RolesModal';
 import GoogleImportModal from './modals/GoogleImportModal';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
 
-function makeColumns(roleMap: Map<string, ContactRole>): ColumnDef<Contact>[] {
+function makeColumns(): ColumnDef<Contact>[] {
   return [
     {
       key: 'name',
@@ -29,27 +27,6 @@ function makeColumns(roleMap: Map<string, ContactRole>): ColumnDef<Contact>[] {
         </div>
       ),
       sortValue: (c) => c.name,
-    },
-    {
-      key: 'role',
-      header: 'Ρόλος',
-      render: (c) => {
-        if (!c.role) return <span className="text-text-secondary">—</span>;
-        const role = roleMap.get(c.role);
-        if (role) {
-          return (
-            <span
-              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
-              style={{ backgroundColor: role.color + '25', color: role.color }}
-            >
-              <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
-              {c.role}
-            </span>
-          );
-        }
-        return <span className="text-text-secondary">{c.role}</span>;
-      },
-      sortValue: (c) => c.role ?? '',
     },
     {
       key: 'phone',
@@ -159,8 +136,6 @@ export default function Contacts() {
   const tenantId = profile?.tenant_id ?? '';
 
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [roles, setRoles] = useState<ContactRole[]>([]);
-  const [roleFilter, setRoleFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<'all' | 'clients' | 'non-clients'>('all');
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -173,21 +148,19 @@ export default function Contacts() {
   useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
-    Promise.all([fetchContacts(tenantId), fetchContactRoles(tenantId)])
-      .then(([c, r]) => { setContacts(c); setRoles(r); })
+    fetchContacts(tenantId)
+      .then((c) => { setContacts(c); })
       .finally(() => setLoading(false));
   }, [tenantId]);
 
-  const roleMap = useMemo(() => new Map(roles.map(r => [r.name, r])), [roles]);
-  const columns = useMemo(() => makeColumns(roleMap), [roleMap]);
+  const columns = useMemo(() => makeColumns(), []);
   const visibleContacts = useMemo(() =>
     contacts.filter(c => {
-      if (roleFilter !== 'all' && c.role !== roleFilter) return false;
       if (clientFilter === 'clients' && !c.is_client) return false;
       if (clientFilter === 'non-clients' && c.is_client) return false;
       return true;
     }),
-    [contacts, roleFilter, clientFilter]
+    [contacts, clientFilter]
   );
 
   useEffect(() => {
@@ -292,12 +265,6 @@ export default function Contacts() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <select className="select shrink-0" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-          <option value="all">Όλοι οι ρόλοι</option>
-          {roles.map(r => (
-            <option key={r.id} value={r.name}>{r.name}</option>
-          ))}
-        </select>
         <select className="select shrink-0" value={clientFilter} onChange={(e) => setClientFilter(e.target.value as typeof clientFilter)}>
           <option value="all">Όλες οι επαφές</option>
           <option value="clients">Μόνο εντολείς</option>
@@ -340,7 +307,7 @@ export default function Contacts() {
       )}
 
       <NewContactModal open={showCreate} onClose={() => setShowCreate(false)} onSubmit={handleCreate} tenantId={tenantId} />
-      <RolesModal open={showRoles} onClose={() => { setShowRoles(false); fetchContactRoles(tenantId).then(setRoles); }} tenantId={tenantId} />
+      <RolesModal open={showRoles} onClose={() => setShowRoles(false)} tenantId={tenantId} />
       <GoogleImportModal
         open={showGoogleImport}
         onClose={() => setShowGoogleImport(false)}

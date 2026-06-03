@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Check, RotateCcw, X, AlertCircle, ChevronLeft, ChevronRight, Pencil, Search, Trash2 } from 'lucide-react';
+import { Plus, Check, RotateCcw, X, AlertCircle, ChevronLeft, ChevronRight, Pencil, Search, Trash2, List, CalendarDays } from 'lucide-react';
 import { fetchCaseTasks, completeTask, reopenTask } from '../caseUtils';
 import { updateTask, deleteTask, TASK_CATEGORIES, type TaskCategory, type LegalActData, type AppointmentData, type TaskExpense } from '../../Tasks/taskUtils';
 import { supabase } from '../../../lib/supabase';
@@ -54,9 +54,8 @@ export default function CaseTasks({ caseId }: Props) {
 
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [listYear, setListYear] = useState<number | null>(null);
-  const [listMonth, setListMonth] = useState<number | null>(null);
 
+  const [displayMode, setDisplayMode] = useState<'list' | 'calendar'>('list');
   const [view, setView] = useState<CalendarView>('month');
   const [year, setYear] = useState(todayDate.getFullYear());
   const [month, setMonth] = useState(todayDate.getMonth());
@@ -170,15 +169,9 @@ export default function CaseTasks({ caseId }: Props) {
     return tasks.filter(t => {
       if (categoryFilter && t.category !== categoryFilter) return false;
       if (q && !t.title.toLowerCase().includes(q) && !(t.description ?? '').toLowerCase().includes(q)) return false;
-      if (listYear !== null && t.due_date) {
-        if (new Date(t.due_date + 'T00:00:00').getFullYear() !== listYear) return false;
-      }
-      if (listMonth !== null && t.due_date) {
-        if (new Date(t.due_date + 'T00:00:00').getMonth() !== listMonth) return false;
-      }
       return true;
     });
-  }, [tasks, categoryFilter, searchQuery, listYear, listMonth]);
+  }, [tasks, categoryFilter, searchQuery]);
 
   const tasksByDay = useMemo(() => {
     const map = new Map<string, CaseTask[]>();
@@ -233,6 +226,7 @@ export default function CaseTasks({ caseId }: Props) {
     title: t.title,
     description: t.description ?? '',
     due_date: t.due_date ?? '',
+    due_time: '',
     case_id: '',
     category: t.category ?? '',
     extra_data: t.extra_data ?? null,
@@ -249,6 +243,18 @@ export default function CaseTasks({ caseId }: Props) {
           {done.length > 0 && <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full font-medium">{done.length} ολοκληρωμένες</span>}
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-border/15 overflow-hidden text-xs">
+            <button onClick={() => setDisplayMode('list')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer transition-colors ${displayMode === 'list' ? 'bg-primary/20 text-primary font-semibold' : 'text-text-secondary hover:bg-white/5'}`}>
+              <List className="h-3.5 w-3.5" />
+              Λίστα
+            </button>
+            <button onClick={() => setDisplayMode('calendar')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer transition-colors ${displayMode === 'calendar' ? 'bg-primary/20 text-primary font-semibold' : 'text-text-secondary hover:bg-white/5'}`}>
+              <CalendarDays className="h-3.5 w-3.5" />
+              Ημερολόγιο
+            </button>
+          </div>
           <div className="flex items-center gap-2 h-9 w-52 rounded-xl border border-border/10 bg-secondary-background px-3">
             <Search className="h-4 w-4 text-text-secondary shrink-0" />
             <input
@@ -319,44 +325,16 @@ export default function CaseTasks({ caseId }: Props) {
         <p className="text-sm text-text-secondary">Φόρτωση…</p>
       ) : tasks.length === 0 ? (
         <p className="text-sm text-text-secondary">Δεν υπάρχουν εργασίες για αυτή την υπόθεση.</p>
-      ) : (searchQuery.trim() || categoryFilter) ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={listYear ?? ''}
-              onChange={e => setListYear(e.target.value ? Number(e.target.value) : null)}
-              className="bg-secondary-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
-            >
-              <option value="">Όλα τα έτη</option>
-              {Array.from({ length: todayDate.getFullYear() - 1999 }, (_, i) => 2000 + i).map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-            <select
-              value={listMonth ?? ''}
-              onChange={e => setListMonth(e.target.value !== '' ? Number(e.target.value) : null)}
-              className="bg-secondary-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
-            >
-              <option value="">Όλοι οι μήνες</option>
-              {MONTH_NAMES.map((name, i) => (
-                <option key={i} value={i}>{name}</option>
-              ))}
-            </select>
-            {(listYear !== null || listMonth !== null) && (
-              <button onClick={() => { setListYear(null); setListMonth(null); }} className="p-0.5 rounded hover:bg-white/10 text-text-secondary cursor-pointer">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-            <span className="text-xs text-text-secondary">{filteredTasks.length} αποτελέσματα</span>
-          </div>
-          {filteredTasks.length === 0 ? (
-            <p className="text-sm text-text-secondary py-4 text-center">Δεν βρέθηκαν εργασίες.</p>
-          ) : (
-            filteredTasks.map(task => (
-              <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
-            ))
-          )}
-        </div>
+      ) : displayMode === 'list' ? (
+        <TaskListView
+          tasks={filteredTasks}
+          todayStr={todayStr}
+          toggling={toggling}
+          onToggle={toggle}
+          onEdit={setEditingTask}
+          onDelete={doDeleteTask}
+          onNavigate={navigate}
+        />
       ) : (
         <div className="space-y-4">
           <div className="rounded-xl border border-border/10 bg-secondary-background p-4 space-y-3">
@@ -521,6 +499,48 @@ export default function CaseTasks({ caseId }: Props) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Task list view ────────────────────────────────────────────────────────────
+
+function TaskListView({ tasks, todayStr, toggling, onToggle, onEdit, onDelete, onNavigate }: {
+  tasks: CaseTask[];
+  todayStr: string;
+  toggling: string | null;
+  onToggle: (t: CaseTask) => void;
+  onEdit: (t: CaseTask) => void;
+  onDelete: (t: CaseTask) => void;
+  onNavigate: (path: string) => void;
+}) {
+  const overdue = tasks.filter(t => t.status === 'open' && !!t.due_date && t.due_date < todayStr);
+  const today   = tasks.filter(t => t.status === 'open' && t.due_date === todayStr);
+  const upcoming = tasks.filter(t => t.status === 'open' && !!t.due_date && t.due_date > todayStr);
+  const noDue   = tasks.filter(t => t.status === 'open' && !t.due_date);
+  const done    = tasks.filter(t => t.status === 'done');
+
+  if (tasks.length === 0) return <p className="text-sm text-text-secondary py-4 text-center">Δεν βρέθηκαν εργασίες.</p>;
+
+  const Group = ({ label, items, accent }: { label: string; items: CaseTask[]; accent?: string }) => {
+    if (!items.length) return null;
+    return (
+      <div className="space-y-2">
+        <h4 className={`text-xs font-semibold uppercase tracking-wide ${accent ?? 'text-text-secondary'}`}>{label} ({items.length})</h4>
+        {items.map(t => (
+          <TaskRow key={t.id} task={t} todayStr={todayStr} toggling={toggling} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} onNavigate={onNavigate} />
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      <Group label="Ληξιπρόθεσμες" items={overdue} accent="text-orange-400" />
+      <Group label="Σήμερα" items={today} accent="text-primary" />
+      <Group label="Επερχόμενες" items={upcoming} />
+      <Group label="Χωρίς προθεσμία" items={noDue} />
+      <Group label="Ολοκληρωμένες" items={done} accent="text-green-500" />
     </div>
   );
 }

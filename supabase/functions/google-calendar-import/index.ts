@@ -44,6 +44,15 @@ function extractDate(event: any): string | null {
   return raw.split('T')[0]
 }
 
+function extractTime(event: any): string | null {
+  const raw = event.start?.dateTime
+  if (!raw) return null
+  // dateTime is like "2026-06-02T09:30:00+03:00" or "2026-06-02T09:30:00"
+  const timePart = raw.split('T')[1]
+  if (!timePart) return null
+  return timePart.slice(0, 5) // "HH:MM"
+}
+
 async function processPage(
   supabase: any,
   tenantId: string,
@@ -84,6 +93,7 @@ async function processPage(
         title: e.summary,
         description: e.description ?? null,
         due_date: extractDate(e),
+        due_time: extractTime(e),
         status: 'open',
         google_event_id: e.id,
       })))
@@ -100,6 +110,7 @@ async function processPage(
         title: e.summary,
         description: e.description ?? null,
         due_date: extractDate(e),
+        due_time: extractTime(e),
       })
       .eq('tenant_id', tenantId)
       .eq('google_event_id', e.id)
