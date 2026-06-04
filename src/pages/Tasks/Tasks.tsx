@@ -568,7 +568,7 @@ export default function Tasks() {
       ) : (
         <div className="animate-fade-in-up stagger-2 space-y-5">
           <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-5 items-start">
-          <div className="rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
+          <div className="min-w-0 rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               {view === 'month' ? (
@@ -769,7 +769,7 @@ export default function Tasks() {
           </div>
 
           {/* Overdue widget */}
-          <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-5 space-y-3">
+          <div className="min-w-0 rounded-xl border border-orange-500/20 bg-orange-500/5 p-5 space-y-3">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0">
                 <AlertCircle className="h-4 w-4" />

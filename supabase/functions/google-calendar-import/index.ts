@@ -71,53 +71,21 @@ async function processPage(
 
   if (toUpsert.length === 0) return 0
 
-  // Find which google_event_ids already exist so we don't overwrite their status
-  const eventIds = toUpsert.map((e) => e.id)
-  const { data: existing } = await supabase
-    .from('tasks')
-    .select('google_event_id')
-    .eq('tenant_id', tenantId)
-    .in('google_event_id', eventIds)
-  const existingIds = new Set((existing ?? []).map((r: any) => r.google_event_id))
+  // Single SQL upsert: inserts new events, updates content fields on existing ones.
+  // ON CONFLICT only touches title/description/due_date/due_time — never status.
+  const { data, error } = await supabase.rpc('upsert_google_tasks', {
+    p_tenant_id: tenantId,
+    p_events: toUpsert.map((e) => ({
+      google_event_id: e.id,
+      title: e.summary,
+      description: e.description ?? null,
+      due_date: extractDate(e),
+      due_time: extractTime(e),
+    })),
+  })
+  if (error) throw new Error(error.message)
 
-  const newEvents = toUpsert.filter((e) => !existingIds.has(e.id))
-  const updatedEvents = toUpsert.filter((e) => existingIds.has(e.id))
-
-  let count = 0
-
-  if (newEvents.length > 0) {
-    const { data, error } = await supabase
-      .from('tasks')
-      .insert(newEvents.map((e) => ({
-        tenant_id: tenantId,
-        title: e.summary,
-        description: e.description ?? null,
-        due_date: extractDate(e),
-        due_time: extractTime(e),
-        status: 'open',
-        google_event_id: e.id,
-      })))
-      .select('id')
-    if (error) throw new Error(error.message)
-    count += data?.length ?? 0
-  }
-
-  // Update existing tasks — only sync content fields, never touch status
-  for (const e of updatedEvents) {
-    await supabase
-      .from('tasks')
-      .update({
-        title: e.summary,
-        description: e.description ?? null,
-        due_date: extractDate(e),
-        due_time: extractTime(e),
-      })
-      .eq('tenant_id', tenantId)
-      .eq('google_event_id', e.id)
-  }
-  count += updatedEvents.length
-
-  return count
+  return data ?? 0
 }
 
 async function syncCalendar(
@@ -139,7 +107,7 @@ async function syncCalendar(
 
   const baseParams: Record<string, string> = syncToken
     ? { syncToken }
-    : { timeMin: defaultTimeMin, singleEvents: 'true', orderBy: 'startTime' }
+    : { timeMin: defaultTimeMin, singleEvents: 'true' }
 
   do {
     // 2500 is Google Calendar API's max page size — 10x fewer round trips than 250
