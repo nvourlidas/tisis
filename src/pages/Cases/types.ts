@@ -69,15 +69,36 @@ export type CaseTask = {
   created_at: string;
   category: import('../Tasks/taskUtils').TaskCategory | null;
   extra_data: import('../Tasks/taskUtils').LegalActData | import('../Tasks/taskUtils').AppointmentData | null;
-  fee: number | null;
-  expenses: import('../Tasks/taskUtils').TaskExpense[] | null;
+  hours: number | null;
+  fee_id: string | null;
 };
 
-export type CaseFinancial = {
+export type CaseFee = {
   id: string;
-  type: 'fee' | 'expense' | 'receipt';
+  tenant_id: string;
+  case_id: string;
   amount: number;
-  description: string | null;
+  agreement_date: string | null;
+  notes: string | null;
+  created_at: string;
+  payments?: FeePayment[];
+};
+
+export type FeePayment = {
+  id: string;
+  fee_id: string;
+  amount: number;
+  paid_at: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type CaseExpense = {
+  id: string;
+  tenant_id: string;
+  case_id: string;
+  amount: number;
   date: string | null;
+  notes: string | null;
   created_at: string;
 };

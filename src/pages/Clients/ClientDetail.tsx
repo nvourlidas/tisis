@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Mail, MapPin, FileText, Pencil, Check, X,
   Plus, Search, User, RotateCcw, CreditCard,
-  ShieldCheck, KeyRound, CalendarDays,
+  ShieldCheck, KeyRound, CalendarDays, Trash2,
 } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
-import { fetchClient, updateClient } from './clientUtils';
+import { fetchClient, updateClient, deleteClient } from './clientUtils';
 import { createCase } from '../Cases/caseUtils';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
@@ -101,6 +101,8 @@ export default function ClientDetail() {
   const [activeTab, setActiveTab] = useState<'info' | 'cases'>('info');
   const [caseSearch, setCaseSearch] = useState('');
   const [showNewCase, setShowNewCase] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -152,6 +154,20 @@ export default function ClientDetail() {
       setError(err?.message ?? 'Αποτυχία αποθήκευσης.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      await deleteClient(id);
+      navigate('/clients');
+    } catch (err: any) {
+      setError(err?.message ?? 'Αποτυχία διαγραφής.');
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -218,9 +234,14 @@ export default function ClientDetail() {
                 </button>
               </>
             ) : (
-              <button onClick={startEdit} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer">
-                <Pencil className="h-3.5 w-3.5" />Επεξεργασία
-              </button>
+              <>
+                <button onClick={() => setConfirmDelete(true)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-danger/20 text-sm text-danger hover:bg-danger/5 transition-all cursor-pointer">
+                  <Trash2 className="h-3.5 w-3.5" />Διαγραφή
+                </button>
+                <button onClick={startEdit} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer">
+                  <Pencil className="h-3.5 w-3.5" />Επεξεργασία
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -380,6 +401,33 @@ export default function ClientDetail() {
           }
         />
       </div>}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-secondary-background rounded-2xl border border-border/15 shadow-xl p-6 w-full max-w-sm mx-4 space-y-4 animate-fade-in-up">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center shrink-0">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-text-primary">Διαγραφή εντολέα;</h2>
+                <p className="text-sm text-text-secondary mt-0.5">Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.</p>
+              </div>
+            </div>
+            <p className="text-sm text-text-secondary">
+              Πρόκειται να διαγράψετε τον εντολέα <span className="font-semibold text-text-primary">{client.name}</span>.
+            </p>
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => setConfirmDelete(false)} disabled={deleting} className="px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer disabled:opacity-60">
+                Ακύρωση
+              </button>
+              <button onClick={handleDelete} disabled={deleting} className="px-4 py-2 rounded-xl bg-danger text-white text-sm font-semibold hover:bg-danger/90 transition-all cursor-pointer disabled:opacity-60">
+                {deleting ? 'Διαγραφή…' : 'Διαγραφή'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <NewCaseModal
         open={showNewCase}

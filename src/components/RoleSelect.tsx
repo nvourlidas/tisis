@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { fetchContactRoles } from '../lib/roleUtils';
 import type { ContactRole } from '../lib/roleUtils';
@@ -59,7 +60,7 @@ export default function RoleSelect({ tenantId, value, onChange, placeholder = 'Î
         <ChevronDown className={`h-3.5 w-3.5 text-text-secondary shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && (
+      {open && createPortal(
         <>
           <div className="fixed inset-0 z-9998" onClick={() => setOpen(false)} />
           <div style={dropdownStyle} className="rounded-xl border border-border/10 bg-secondary-background shadow-xl overflow-hidden">
@@ -94,7 +95,8 @@ export default function RoleSelect({ tenantId, value, onChange, placeholder = 'Î
               </div>
             )}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

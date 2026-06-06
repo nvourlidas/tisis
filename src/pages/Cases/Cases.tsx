@@ -175,7 +175,7 @@ export default function Cases() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" />
           <input
             className="input rounded-xl border-border/15 hover:border-border/30 focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-colors w-full pl-9!"
-            placeholder="Αναζήτηση με κωδικό, τίτλο…"
+            placeholder="Αναζήτηση με κωδικό, τίτλο, εντολέα…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />

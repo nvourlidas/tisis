@@ -8,6 +8,7 @@ import {
   Phone,
   CheckSquare,
   TrendingUp,
+  Clock,
 } from 'lucide-react';
 
 export type PlanTier = 'free' | 'starter' | 'pro';
@@ -64,6 +65,7 @@ export const NAV: NavEntry[] = [
     roles: ['owner', 'admin'],
     children: [
       { label: 'Ομάδα', to: '/settings/users', roles: ['owner', 'admin'] },
+      { label: 'Χρεώσεις Κατηγοριών', to: '/settings/category-rates', roles: ['owner', 'admin'], icon: Clock },
     ],
   },
 ];

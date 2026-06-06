@@ -24,6 +24,7 @@ import Finances from './pages/Finances/Finances';
 import UsersSettings from './pages/Settings/Users';
 import ContactRoles from './pages/Settings/ContactRoles';
 import CaseStages from './pages/Settings/CaseStages';
+import CategoryRates from './pages/Settings/CategoryRates';
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -51,6 +52,7 @@ const router = createBrowserRouter([
       { path: 'settings/users', element: <UsersSettings /> },
       { path: 'settings/contact-roles', element: <ContactRoles /> },
       { path: 'settings/case-stages', element: <CaseStages /> },
+      { path: 'settings/category-rates', element: <CategoryRates /> },
     ],
   },
 ]);

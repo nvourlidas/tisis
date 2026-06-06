@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Search, X, Plus, Trash2, Link2 } from 'lucide-react';
+import { Search, X, Plus, Link2, Clock } from 'lucide-react';
 import { searchCasesForCall } from '../Calls/callUtils';
 import {
-  TASK_CATEGORIES, searchTasks, fetchLinkedTasks, createTask,
-  type TaskCategory, type LegalActData, type AppointmentData, type CourtData, type Task, type TaskExpense, type LinkedTask,
+  TASK_CATEGORIES, searchTasks, fetchLinkedTasks, createTask, fetchCategoryRates, calcTaskAmount,
+  type TaskCategory, type LegalActData, type AppointmentData, type CourtData, type Task, type LinkedTask, type CategoryRate,
 } from './taskUtils';
 
 export type TaskFormValues = {
@@ -14,8 +14,7 @@ export type TaskFormValues = {
   case_id: string;
   category: TaskCategory | '';
   extra_data: LegalActData | AppointmentData | null;
-  fee: number | null;
-  expenses: TaskExpense[];
+  hours: number | null;
   linked_task_ids: string[];
 };
 
@@ -109,8 +108,7 @@ export function taskToFormValues(task: Task): TaskFormValues {
     case_id: task.case_id ?? '',
     category: task.category ?? '',
     extra_data: task.extra_data ?? null,
-    fee: task.fee ?? null,
-    expenses: task.expenses ?? [],
+    hours: task.hours ?? null,
     linked_task_ids: task.linked_tasks?.map(t => t.id) ?? [],
   };
 }
@@ -134,8 +132,15 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
     initial?.category === 'court' ? courtFromData(initExtra as CourtData) : emptyCourt()
   );
 
-  const [fee, setFee] = useState<string>(initial?.fee != null ? String(initial.fee) : '');
-  const [expenses, setExpenses] = useState<TaskExpense[]>(initial?.expenses ?? []);
+  const [hours, setHours] = useState<string>(initial?.hours != null ? String(initial.hours) : '');
+  const [rates, setRates] = useState<CategoryRate[]>([]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    fetchCategoryRates(tenantId).then(setRates).catch(() => {});
+  }, [tenantId]);
+
+  const calculatedAmount = calcTaskAmount(hours !== '' ? parseFloat(hours) : null, rates, category || null);
 
   // Linked tasks
   const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
@@ -144,11 +149,6 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
   const [searchingTasks, setSearchingTasks] = useState(false);
   const [showTaskSearch, setShowTaskSearch] = useState(false);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
-
-  const addExpense = () => setExpenses(ex => [...ex, { description: '', amount: 0 }]);
-  const removeExpense = (i: number) => setExpenses(ex => ex.filter((_, idx) => idx !== i));
-  const setExpenseField = (i: number, k: keyof TaskExpense, v: string) =>
-    setExpenses(ex => ex.map((e, idx) => idx === i ? { ...e, [k]: k === 'amount' ? parseFloat(v) || 0 : v } : e));
 
   const [selectedCase, setSelectedCase] = useState<{ id: string; code: string; title: string } | null>(
     initial?.case_id && initial.case_code ? { id: initial.case_id, code: initial.case_code, title: initial.case_title ?? '' } : null
@@ -209,8 +209,7 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
     onSubmit({
       title, description, due_date, due_time, case_id, category,
       extra_data: buildExtraData(category, legalAct, appointment, court),
-      fee: fee !== '' ? parseFloat(fee) : null,
-      expenses: expenses.filter(e => e.description.trim() || e.amount),
+      hours: hours !== '' ? parseFloat(hours) : null,
       linked_task_ids: linkedTasks.map(t => t.id),
     });
   };
@@ -457,60 +456,36 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
           </div>
         )}
 
-        {/* Financials */}
-        <div className="space-y-3 rounded-xl border border-border/10 p-4">
-          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Οικονομικά</p>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Αμοιβή (€)</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className="input w-full text-sm"
-              placeholder="0.00"
-              value={fee}
-              onChange={e => setFee(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-text-secondary">Έξοδα</label>
-              <button type="button" onClick={addExpense}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-primary hover:bg-primary/10 cursor-pointer transition-colors">
-                <Plus className="h-3 w-3" />
-                Προσθήκη
-              </button>
+        {/* Hours */}
+        <div className="rounded-xl border border-border/10 p-4 space-y-3">
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            Χρεώσιμες Ώρες
+          </p>
+          <div className="flex items-end gap-3">
+            <div className="w-40">
+              <label className="block text-xs text-text-secondary mb-1">Ώρες</label>
+              <input
+                type="number" min="0" step="0.25"
+                className="input w-full text-sm"
+                placeholder="0.00"
+                value={hours}
+                onChange={e => setHours(e.target.value)}
+              />
             </div>
-            {expenses.length === 0 ? (
-              <p className="text-xs text-text-secondary italic">Δεν υπάρχουν έξοδα.</p>
-            ) : (
-              <div className="space-y-2">
-                {expenses.map((exp, i) => (
-                  <div key={i} className="rounded-lg border border-border/10 bg-white/2 p-3 space-y-2">
-                    <input
-                      className="input w-full text-sm"
-                      placeholder="Περιγραφή εξόδου"
-                      value={exp.description}
-                      onChange={e => setExpenseField(i, 'description', e.target.value)}
-                    />
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="input w-full text-sm"
-                        placeholder="Ποσό (€)"
-                        value={exp.amount || ''}
-                        onChange={e => setExpenseField(i, 'amount', e.target.value)}
-                      />
-                      <button type="button" onClick={() => removeExpense(i)}
-                        className="p-1.5 rounded hover:bg-danger/10 text-text-secondary hover:text-danger transition-colors cursor-pointer shrink-0">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            {calculatedAmount != null && (
+              <div className="pb-0.5">
+                <p className="text-xs text-text-secondary mb-1">Υπολογισμένο ποσό</p>
+                <p className="text-sm font-semibold text-blue-500">
+                  {new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(calculatedAmount)}
+                </p>
               </div>
+            )}
+            {hours && !calculatedAmount && category && (
+              <p className="text-xs text-text-secondary pb-1">Δεν έχει οριστεί χρέωση για αυτή την κατηγορία.</p>
+            )}
+            {hours && !category && (
+              <p className="text-xs text-text-secondary pb-1">Επιλέξτε κατηγορία για υπολογισμό ποσού.</p>
             )}
           </div>
         </div>
@@ -567,8 +542,6 @@ function NewLinkedTaskModal({ tenantId, defaultCaseId, onCreated, onClose }: {
         case_id: values.case_id || defaultCaseId,
         category: values.category || undefined,
         extra_data: values.extra_data,
-        fee: values.fee,
-        expenses: values.expenses,
       });
       onCreated({
         id: result.id,

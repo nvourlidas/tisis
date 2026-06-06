@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import type { Case, CaseFormData, CaseContact, CaseCall, CaseTask, CaseFinancial, CaseStatus, CaseStage } from './types';
+import type { Case, CaseFormData, CaseContact, CaseCall, CaseTask, CaseFee, CaseExpense, CaseStatus, CaseStage } from './types';
 
 const CASE_SELECT = '*, clients(name), case_stages(name)';
 function mapCase(r: any): Case {
@@ -39,15 +39,44 @@ export async function fetchCase(id: string): Promise<Case | null> {
 }
 
 export async function searchCases(tenantId: string, query: string): Promise<Case[]> {
-  const { data, error } = await supabase
-    .from('cases')
-    .select(CASE_SELECT)
-    .eq('tenant_id', tenantId)
-    .or(`code.ilike.%${query}%,title.ilike.%${query}%`)
-    .order('created_at', { ascending: false })
-    .limit(30);
-  if (error) throw error;
-  return (data ?? []).map(mapCase);
+  const [byCase, byClient] = await Promise.all([
+    supabase
+      .from('cases')
+      .select(CASE_SELECT)
+      .eq('tenant_id', tenantId)
+      .or(`code.ilike.%${query}%,title.ilike.%${query}%`)
+      .order('created_at', { ascending: false })
+      .limit(30),
+    supabase
+      .from('clients')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .ilike('name', `%${query}%`)
+      .limit(50),
+  ]);
+  if (byCase.error) throw byCase.error;
+  if (byClient.error) throw byClient.error;
+
+  const clientIds = (byClient.data ?? []).map((c: any) => c.id);
+  let extra: Case[] = [];
+  if (clientIds.length > 0) {
+    const { data, error } = await supabase
+      .from('cases')
+      .select(CASE_SELECT)
+      .eq('tenant_id', tenantId)
+      .in('client_id', clientIds)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    extra = (data ?? []).map(mapCase);
+  }
+
+  const seen = new Set<string>();
+  const merged: Case[] = [];
+  for (const c of [...(byCase.data ?? []).map(mapCase), ...extra]) {
+    if (!seen.has(c.id)) { seen.add(c.id); merged.push(c); }
+  }
+  return merged;
 }
 
 // --- Stages ---
@@ -159,7 +188,7 @@ export async function fetchCaseCalls(caseId: string): Promise<CaseCall[]> {
 export async function fetchCaseTasks(caseId: string): Promise<CaseTask[]> {
   const { data, error } = await supabase
     .from('tasks')
-    .select('id, title, description, due_date, status, completed_at, created_at, category, extra_data, fee, expenses')
+    .select('id, title, description, due_date, status, completed_at, created_at, category, extra_data, hours, fee_id')
     .eq('case_id', caseId)
     .order('due_date', { ascending: true, nullsFirst: false });
   if (error) throw error;
@@ -168,9 +197,14 @@ export async function fetchCaseTasks(caseId: string): Promise<CaseTask[]> {
     due_date: r.due_date ? r.due_date.slice(0, 10) : null,
     category: r.category ?? null,
     extra_data: r.extra_data ?? null,
-    fee: r.fee ?? null,
-    expenses: r.expenses ?? null,
+    hours: r.hours ?? null,
+    fee_id: r.fee_id ?? null,
   }));
+}
+
+export async function linkTaskToFee(taskId: string, feeId: string | null): Promise<void> {
+  const { error } = await supabase.from('tasks').update({ fee_id: feeId }).eq('id', taskId);
+  if (error) throw error;
 }
 
 export async function completeTask(id: string): Promise<void> {
@@ -183,23 +217,90 @@ export async function reopenTask(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// --- Financials ---
-export async function fetchCaseFinancials(caseId: string): Promise<CaseFinancial[]> {
+// --- Case Fees ---
+export async function fetchCaseFees(caseId: string): Promise<CaseFee[]> {
   const { data, error } = await supabase
-    .from('financials')
-    .select('id, type, amount, description, date, created_at')
+    .from('case_fees')
+    .select('*, fee_payments(*)')
+    .eq('case_id', caseId)
+    .order('agreement_date', { ascending: false, nullsFirst: false });
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    agreement_date: r.agreement_date ?? null,
+    payments: (r.fee_payments ?? []).map((p: any) => ({
+      ...p,
+      paid_at: p.paid_at.slice(0, 10),
+    })).sort((a: any, b: any) => a.paid_at.localeCompare(b.paid_at)),
+  }));
+}
+
+export async function createCaseFee(tenantId: string, caseId: string, fee: {
+  amount: number;
+  agreement_date: string | null;
+  notes?: string;
+}): Promise<CaseFee> {
+  const { data, error } = await supabase
+    .from('case_fees')
+    .insert({ tenant_id: tenantId, case_id: caseId, ...fee, notes: fee.notes || null })
+    .select()
+    .single();
+  if (error) throw error;
+  return { ...data, payments: [] };
+}
+
+export async function deleteCaseFee(id: string): Promise<void> {
+  const { error } = await supabase.from('case_fees').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function createFeePayment(tenantId: string, feeId: string, payment: {
+  amount: number;
+  paid_at: string;
+  notes?: string;
+}): Promise<void> {
+  const { error } = await supabase.from('fee_payments').insert({
+    tenant_id: tenantId,
+    fee_id: feeId,
+    amount: payment.amount,
+    paid_at: payment.paid_at,
+    notes: payment.notes || null,
+  });
+  if (error) throw error;
+}
+
+export async function deleteFeePayment(id: string): Promise<void> {
+  const { error } = await supabase.from('fee_payments').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// --- Case Expenses ---
+export async function fetchCaseExpenses(caseId: string): Promise<CaseExpense[]> {
+  const { data, error } = await supabase
+    .from('case_expenses')
+    .select('*')
     .eq('case_id', caseId)
     .order('date', { ascending: false, nullsFirst: false });
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((r: any) => ({ ...r, date: r.date ?? null }));
 }
 
-export async function createFinancial(_tenantId: string, caseId: string, entry: {
-  type: 'fee' | 'expense' | 'receipt';
+export async function createCaseExpense(tenantId: string, caseId: string, expense: {
   amount: number;
-  description: string;
-  date: string;
+  date: string | null;
+  notes?: string;
 }): Promise<void> {
-  const { error } = await supabase.functions.invoke('financial-create', { body: { case_id: caseId, ...entry } });
+  const { error } = await supabase.from('case_expenses').insert({
+    tenant_id: tenantId,
+    case_id: caseId,
+    amount: expense.amount,
+    date: expense.date || null,
+    notes: expense.notes || null,
+  });
+  if (error) throw error;
+}
+
+export async function deleteCaseExpense(id: string): Promise<void> {
+  const { error } = await supabase.from('case_expenses').delete().eq('id', id);
   if (error) throw error;
 }

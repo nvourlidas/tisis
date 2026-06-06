@@ -1,18 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Check, Clock, Tag, CalendarDays, Briefcase, User,
-  Euro, Receipt, Link2, Pencil, RotateCcw, AlertCircle, X, Plus, Trash2,
+  Link2, Pencil, RotateCcw, AlertCircle, X, Plus, Search,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { formatDate } from '../../lib/dateUtils';
 import {
-  fetchTask, fetchLinkedTasks, completeTask, reopenTask, updateTask,
-  fetchTaskPayments, createTaskPayment, deleteTaskPayment,
-  addTaskLink, removeTaskLink, searchTasks,
+  fetchTask, fetchLinkedTasks, completeTask, reopenTask, updateTask, updateTaskHours,
+  addTaskLink, removeTaskLink, searchFullTasks,
+  fetchCategoryRates, calcTaskAmount,
   TASK_CATEGORIES,
-  type Task, type LinkedTask, type LegalActData, type AppointmentData, type CourtData, type TaskPayment,
+  type Task, type LinkedTask, type LegalActData, type AppointmentData, type CourtData, type TaskCategory, type CategoryRate,
 } from './taskUtils';
+
 import TaskForm, { taskToFormValues, type TaskFormValues } from './TaskForm';
 
 export default function TaskDetail() {
@@ -23,39 +24,22 @@ export default function TaskDetail() {
 
   const [task, setTask] = useState<Task | null>(null);
   const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
-  const [payments, setPayments] = useState<TaskPayment[]>([]);
+  const [rates, setRates] = useState<CategoryRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // linked task search state
-  const [linkSearch, setLinkSearch] = useState('');
-  const [linkResults, setLinkResults] = useState<LinkedTask[]>([]);
-  const [linkSearching, setLinkSearching] = useState(false);
-  const [showLinkSearch, setShowLinkSearch] = useState(false);
-  const linkDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [editingHours, setEditingHours] = useState(false);
+  const [hoursInput, setHoursInput] = useState('');
+  const [savingHours, setSavingHours] = useState(false);
 
-  const handleLinkSearch = (q: string) => {
-    setLinkSearch(q);
-    setLinkResults([]);
-    if (linkDebounceRef.current) clearTimeout(linkDebounceRef.current);
-    if (q.trim().length < 2) { setLinkSearching(false); return; }
-    setLinkSearching(true);
-    linkDebounceRef.current = setTimeout(async () => {
-      const results = await searchTasks(tenantId, q, id);
-      setLinkResults(results.filter(r => !linkedTasks.some(lt => lt.id === r.id)).slice(0, 8));
-      setLinkSearching(false);
-    }, 300);
-  };
-
-  const handleAddLink = async (target: LinkedTask) => {
+  const handleAddLink = async (target: Task) => {
     if (!id) return;
     await addTaskLink(tenantId, id, target.id);
-    setLinkSearch('');
-    setLinkResults([]);
-    setShowLinkSearch(false);
+    setShowLinkModal(false);
     const links = await fetchLinkedTasks(id);
     setLinkedTasks(links);
   };
@@ -67,25 +51,17 @@ export default function TaskDetail() {
     setLinkedTasks(links);
   };
 
-  // payment form state
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
-  const [paymentNotes, setPaymentNotes] = useState('');
-  const [addingPayment, setAddingPayment] = useState(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-
   const load = async () => {
     if (!id) return;
     setLoading(true);
-    const [t, links, pays] = await Promise.all([fetchTask(id), fetchLinkedTasks(id), fetchTaskPayments(id)]);
+    const [t, links] = await Promise.all([fetchTask(id), fetchLinkedTasks(id)]);
     setTask(t);
     setLinkedTasks(links);
-    setPayments(pays);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, [id]);
+  useEffect(() => { if (tenantId) fetchCategoryRates(tenantId).then(setRates).catch(() => {}); }, [tenantId]);
 
   const handleToggle = async () => {
     if (!task) return;
@@ -97,34 +73,6 @@ export default function TaskDetail() {
     } finally {
       setToggling(false);
     }
-  };
-
-  const handleAddPayment = async () => {
-    if (!task || !paymentAmount) return;
-    const amt = parseFloat(paymentAmount);
-    if (isNaN(amt) || amt <= 0) { setPaymentError('Μη έγκυρο ποσό.'); return; }
-    setAddingPayment(true);
-    setPaymentError(null);
-    try {
-      await createTaskPayment(tenantId, task.id, { amount: amt, paid_at: paymentDate, notes: paymentNotes || undefined });
-      setPaymentAmount('');
-      setPaymentNotes('');
-      setPaymentDate(new Date().toISOString().slice(0, 10));
-      setShowPaymentForm(false);
-      const pays = await fetchTaskPayments(task.id);
-      setPayments(pays);
-    } catch (e: any) {
-      setPaymentError(e?.message ?? 'Αποτυχία αποθήκευσης.');
-    } finally {
-      setAddingPayment(false);
-    }
-  };
-
-  const handleDeletePayment = async (paymentId: string) => {
-    if (!task) return;
-    await deleteTaskPayment(paymentId);
-    const pays = await fetchTaskPayments(task.id);
-    setPayments(pays);
   };
 
   const handleUpdate = async (values: TaskFormValues) => {
@@ -141,8 +89,7 @@ export default function TaskDetail() {
         case_id: values.case_id || null,
         category: values.category || undefined,
         extra_data: values.extra_data,
-        fee: values.fee,
-        expenses: values.expenses,
+        hours: values.hours,
         linked_task_ids: values.linked_task_ids,
       });
       setEditing(false);
@@ -184,7 +131,7 @@ export default function TaskDetail() {
     ? (task.extra_data as AppointmentData | null) : null;
   const courtData = task.category === 'court'
     ? (task.extra_data as CourtData | null) : null;
-  const totalExpenses = task.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
+  const calculatedAmount = calcTaskAmount(task.hours, rates, task.category);
 
   return (
     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -355,141 +302,30 @@ export default function TaskDetail() {
         </Section>
       )}
 
-      {/* Financials */}
-      {(task.fee || (task.expenses?.length ?? 0) > 0) && (
-        <Section title="Οικονομικά">
-          <div className="space-y-3">
-            {task.fee != null && task.fee > 0 && (
-              <div className="flex items-center gap-2 text-sm">
-                <Euro className="h-4 w-4 text-green-500 shrink-0" />
-                <span className="text-text-secondary">Αμοιβή:</span>
-                <span className="font-semibold text-green-500">{task.fee.toFixed(2)} €</span>
-              </div>
-            )}
-            {(task.expenses?.length ?? 0) > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <Receipt className="h-4 w-4 text-red-400 shrink-0" />
-                  <span className="text-text-secondary">Έξοδα:</span>
-                  <span className="font-semibold text-red-400">{totalExpenses.toFixed(2)} €</span>
-                </div>
-                <div className="pl-6 space-y-1">
-                  {task.expenses!.map((e, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs text-text-secondary">
-                      <span>{e.description}</span>
-                      <span className="font-medium">{e.amount.toFixed(2)} €</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </Section>
-      )}
-
-      {/* Payments */}
-      {task.fee != null && task.fee > 0 && (
-        <Section title="Πληρωμές" icon={<Euro className="h-4 w-4" />}>
-          {(() => {
-            const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
-            const remaining = task.fee - totalPaid;
-            return (
-              <div className="space-y-4">
-                {/* Summary bar */}
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="text-text-secondary">Σύνολο: <strong className="text-text-primary">{task.fee.toFixed(2)} €</strong></span>
-                  <span className="text-green-500">Πληρωμένο: <strong>{totalPaid.toFixed(2)} €</strong></span>
-                  <span className={remaining < 0 ? 'text-green-500' : remaining > 0 ? 'text-orange-400' : 'text-green-500'}>
-                    Υπόλοιπο: <strong>{remaining < 0 ? '+' : ''}{Math.abs(remaining).toFixed(2)} €</strong>
-                  </span>
-                </div>
-                {/* Progress bar */}
-                <div className="h-2 rounded-full bg-border/20 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-green-500 transition-all"
-                    style={{ width: `${Math.min(100, (totalPaid / task.fee) * 100)}%` }}
-                  />
-                </div>
-                {/* Payment list */}
-                {payments.length > 0 && (
-                  <div className="space-y-1">
-                    {payments.map(p => (
-                      <div key={p.id} className="flex items-center gap-3 rounded-lg px-3 py-2 bg-white/3 hover:bg-white/5 group">
-                        <span className="text-xs text-text-secondary w-24 shrink-0">{p.paid_at}</span>
-                        <span className="text-sm font-semibold text-green-500 w-20 shrink-0">{p.amount.toFixed(2)} €</span>
-                        <span className="text-xs text-text-secondary flex-1 truncate">{p.notes ?? ''}</span>
-                        <button
-                          onClick={() => handleDeletePayment(p.id)}
-                          className="opacity-0 group-hover:opacity-100 text-text-secondary hover:text-red-400 transition-all cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Add payment form */}
-                {showPaymentForm ? (
-                  <div className="space-y-3 rounded-xl border border-border/20 bg-white/3 p-4">
-                    <div className="flex gap-3">
-                      <div className="flex-1">
-                        <label className="text-[10px] text-text-secondary uppercase tracking-wider mb-1 block">Ποσό (€)</label>
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={paymentAmount}
-                          onChange={e => setPaymentAmount(e.target.value)}
-                          placeholder="0.00"
-                          className="w-full rounded-lg border border-border/20 bg-background px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <label className="text-[10px] text-text-secondary uppercase tracking-wider mb-1 block">Ημερομηνία</label>
-                        <input
-                          type="date"
-                          value={paymentDate}
-                          onChange={e => setPaymentDate(e.target.value)}
-                          className="w-full rounded-lg border border-border/20 bg-background px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-text-secondary uppercase tracking-wider mb-1 block">Σημειώσεις</label>
-                      <input
-                        type="text"
-                        value={paymentNotes}
-                        onChange={e => setPaymentNotes(e.target.value)}
-                        placeholder="Προαιρετικό"
-                        className="w-full rounded-lg border border-border/20 bg-background px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40"
-                      />
-                    </div>
-                    {paymentError && <p className="text-xs text-red-400">{paymentError}</p>}
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={() => { setShowPaymentForm(false); setPaymentError(null); }} className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary cursor-pointer">Άκυρο</button>
-                      <button
-                        onClick={handleAddPayment}
-                        disabled={addingPayment}
-                        className="px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
-                      >
-                        {addingPayment ? 'Αποθήκευση…' : 'Αποθήκευση'}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowPaymentForm(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Προσθήκη Πληρωμής
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-        </Section>
-      )}
+      {/* Hours widget */}
+      <HoursWidget
+        task={task}
+        rates={rates}
+        calculatedAmount={calculatedAmount}
+        editingHours={editingHours}
+        hoursInput={hoursInput}
+        savingHours={savingHours}
+        onStartEdit={() => { setHoursInput(task.hours != null ? String(task.hours) : ''); setEditingHours(true); }}
+        onCancel={() => setEditingHours(false)}
+        onSave={async () => {
+          const val = hoursInput === '' ? null : parseFloat(hoursInput);
+          if (val !== null && isNaN(val)) return;
+          setSavingHours(true);
+          try {
+            await updateTaskHours(task.id, val);
+            setEditingHours(false);
+            await load();
+          } finally {
+            setSavingHours(false);
+          }
+        }}
+        onChangeInput={setHoursInput}
+      />
 
       {/* Linked tasks */}
       <div className="animate-fade-in-up rounded-2xl border border-border/10 bg-secondary-background p-6 space-y-4">
@@ -499,7 +335,7 @@ export default function TaskDetail() {
             Συνδεδεμένες Εργασίες
           </h2>
           <button
-            onClick={() => { setShowLinkSearch(s => !s); setLinkSearch(''); setLinkResults([]); }}
+            onClick={() => setShowLinkModal(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -507,45 +343,7 @@ export default function TaskDetail() {
           </button>
         </div>
 
-        {showLinkSearch && (
-          <div className="relative">
-            <input
-              autoFocus
-              type="text"
-              value={linkSearch}
-              onChange={e => handleLinkSearch(e.target.value)}
-              placeholder="Αναζήτηση εργασίας…"
-              className="w-full rounded-lg border border-border/20 bg-background px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40"
-            />
-            {linkSearching && (
-              <div className="absolute right-3 top-2.5">
-                <RotateCcw className="h-4 w-4 animate-spin text-text-secondary" />
-              </div>
-            )}
-            {linkResults.length > 0 && (
-              <div className="absolute z-20 mt-1 w-full rounded-xl border border-border/20 bg-secondary-background shadow-xl overflow-hidden">
-                {linkResults.map(r => (
-                  <button
-                    key={r.id}
-                    onClick={() => handleAddLink(r)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/6 transition-colors cursor-pointer"
-                  >
-                    <span className="flex-1 text-sm text-text-primary truncate">{r.title}</span>
-                    {r.category && <span className="text-[10px] text-text-secondary shrink-0">{TASK_CATEGORIES[r.category]}</span>}
-                    {r.due_date && <span className="text-[10px] text-text-secondary shrink-0">{formatDate(r.due_date)}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-            {linkSearch.trim() && !linkSearching && linkResults.length === 0 && (
-              <div className="absolute z-20 mt-1 w-full rounded-xl border border-border/20 bg-secondary-background shadow-xl px-4 py-3 text-sm text-text-secondary">
-                Δεν βρέθηκαν εργασίες.
-              </div>
-            )}
-          </div>
-        )}
-
-        {linkedTasks.length === 0 && !showLinkSearch ? (
+        {linkedTasks.length === 0 ? (
           <p className="text-sm text-text-secondary">Δεν υπάρχουν συνδεδεμένες εργασίες.</p>
         ) : (
           <div className="space-y-2">
@@ -555,6 +353,17 @@ export default function TaskDetail() {
           </div>
         )}
       </div>
+
+      {/* Link task modal */}
+      {showLinkModal && (
+        <LinkTaskModal
+          tenantId={tenantId}
+          excludeId={id}
+          alreadyLinked={linkedTasks.map(t => t.id)}
+          onSelect={handleAddLink}
+          onClose={() => setShowLinkModal(false)}
+        />
+      )}
 
       {/* Edit modal */}
       {editing && (
@@ -579,6 +388,115 @@ export default function TaskDetail() {
               />
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Hours Widget ─────────────────────────────────────────────────────────────
+
+function HoursWidget({ task, rates, calculatedAmount, editingHours, hoursInput, savingHours, onStartEdit, onCancel, onSave, onChangeInput }: {
+  task: Task;
+  rates: CategoryRate[];
+  calculatedAmount: number | null;
+  editingHours: boolean;
+  hoursInput: string;
+  savingHours: boolean;
+  onStartEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  onChangeInput: (v: string) => void;
+}) {
+  const rateForCategory = task.category ? rates.find(r => r.category === task.category) : null;
+  const hasRate = !!rateForCategory && rateForCategory.rate_per_hour > 0;
+  const fmt = (n: number) => new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(n);
+  const previewAmount = editingHours && hoursInput !== ''
+    ? calcTaskAmount(parseFloat(hoursInput), rates, task.category)
+    : null;
+
+  return (
+    <div className="animate-fade-in-up rounded-2xl border border-border/10 bg-secondary-background p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+          <Clock className="h-4 w-4" />
+          Χρεώσιμες Ώρες
+        </h2>
+        {!editingHours && (
+          <button
+            onClick={onStartEdit}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Επεξεργασία
+          </button>
+        )}
+      </div>
+
+      {editingHours ? (
+        <div className="space-y-3">
+          <div className="flex items-end gap-3">
+            <div className="w-36">
+              <label className="block text-xs text-text-secondary mb-1">Ώρες</label>
+              <input
+                autoFocus
+                type="number"
+                min="0"
+                step="0.25"
+                placeholder="0"
+                value={hoursInput}
+                onChange={e => onChangeInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+                className="w-full px-3 py-2 text-sm rounded-xl border border-border/20 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            {previewAmount != null && (
+              <div className="pb-2">
+                <p className="text-xs text-text-secondary mb-0.5">Υπολογισμένο</p>
+                <p className="text-sm font-semibold text-blue-500">{fmt(previewAmount)}</p>
+              </div>
+            )}
+            {hoursInput && !previewAmount && !hasRate && (
+              <p className="text-xs text-text-secondary pb-2">Δεν έχει οριστεί χρέωση για αυτή την κατηγορία.</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onSave}
+              disabled={savingHours}
+              className="px-4 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              {savingHours ? '...' : 'Αποθήκευση'}
+            </button>
+            <button
+              onClick={onCancel}
+              className="px-4 py-1.5 text-xs font-medium rounded-lg border border-border/20 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+            >
+              Ακύρωση
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-6 text-sm">
+          {task.hours != null && task.hours > 0 ? (
+            <>
+              <div>
+                <p className="text-xs text-text-secondary mb-0.5">Ώρες</p>
+                <p className="font-semibold text-text-primary">{task.hours}</p>
+              </div>
+              {calculatedAmount != null && (
+                <div>
+                  <p className="text-xs text-text-secondary mb-0.5">Υπολογισμένο ποσό</p>
+                  <p className="font-semibold text-blue-500">{fmt(calculatedAmount)}</p>
+                </div>
+              )}
+              {!hasRate && task.category && (
+                <p className="text-xs text-text-secondary self-end pb-0.5">Δεν έχει οριστεί χρέωση για αυτή την κατηγορία.</p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-text-secondary">Δεν έχουν καταχωρηθεί ώρες.</p>
+          )}
         </div>
       )}
     </div>
@@ -668,6 +586,175 @@ function LinkedTaskRow({ task, onClick, onUnlink }: { task: LinkedTask; onClick:
         <X className="h-3.5 w-3.5" />
       </button>
     )}
+    </div>
+  );
+}
+
+// ── Link task modal ───────────────────────────────────────────────────────────
+
+const MODAL_MONTH_NAMES = [
+  'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος',
+  'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος',
+];
+
+function LinkTaskModal({ tenantId, excludeId, alreadyLinked, onSelect, onClose }: {
+  tenantId: string;
+  excludeId: string | undefined;
+  alreadyLinked: string[];
+  onSelect: (task: Task) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Task[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [category, setCategory] = useState<TaskCategory | null>(null);
+  const [filterYear, setFilterYear] = useState<number | null>(null);
+  const [filterMonth, setFilterMonth] = useState<number | null>(null);
+  const currentYear = new Date().getFullYear();
+
+  useEffect(() => {
+    if (!query.trim() || !tenantId) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const all = await searchFullTasks(tenantId, query.trim());
+        setResults(all);
+      } finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, tenantId]);
+
+  const filtered = results.filter(t => {
+    if (t.id === excludeId) return false;
+    if (alreadyLinked.includes(t.id)) return false;
+    if (category && t.category !== category) return false;
+    if (filterYear !== null && t.due_date) {
+      if (new Date(t.due_date + 'T00:00:00').getFullYear() !== filterYear) return false;
+    }
+    if (filterMonth !== null && t.due_date) {
+      if (new Date(t.due_date + 'T00:00:00').getMonth() !== filterMonth) return false;
+    }
+    return true;
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-xl max-h-[80vh] flex flex-col rounded-2xl border border-border/20 bg-secondary-background shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/10 shrink-0">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            Σύνδεση Εργασίας
+          </h2>
+          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 text-text-secondary cursor-pointer">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Search + filters */}
+        <div className="px-5 py-3 space-y-3 border-b border-border/10 shrink-0">
+          <div className="flex items-center gap-2 rounded-xl border border-border/15 bg-background px-3 py-2">
+            <Search className="h-4 w-4 text-text-secondary shrink-0" />
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Αναζήτηση εργασίας…"
+              className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-secondary outline-none"
+            />
+            {searching && <RotateCcw className="h-3.5 w-3.5 animate-spin text-text-secondary shrink-0" />}
+            {query && !searching && (
+              <button onClick={() => setQuery('')} className="text-text-secondary hover:text-text-primary cursor-pointer shrink-0">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Filters row */}
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={category ?? ''}
+              onChange={e => setCategory(e.target.value ? e.target.value as TaskCategory : null)}
+              className="bg-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλες οι κατηγορίες</option>
+              {(Object.keys(TASK_CATEGORIES) as TaskCategory[]).map(c => (
+                <option key={c} value={c}>{TASK_CATEGORIES[c]}</option>
+              ))}
+            </select>
+            <select
+              value={filterYear ?? ''}
+              onChange={e => setFilterYear(e.target.value ? Number(e.target.value) : null)}
+              className="bg-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλα τα έτη</option>
+              {Array.from({ length: currentYear - 1999 }, (_, i) => 2000 + i).reverse().map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <select
+              value={filterMonth ?? ''}
+              onChange={e => setFilterMonth(e.target.value !== '' ? Number(e.target.value) : null)}
+              className="bg-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλοι οι μήνες</option>
+              {MODAL_MONTH_NAMES.map((name, i) => (
+                <option key={i} value={i}>{name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          {!query.trim() ? (
+            <p className="text-sm text-text-secondary text-center py-8">Πληκτρολογήστε για αναζήτηση.</p>
+          ) : filtered.length === 0 && !searching ? (
+            <p className="text-sm text-text-secondary text-center py-8">Δεν βρέθηκαν εργασίες.</p>
+          ) : (
+            filtered.map(t => {
+              const today = new Date().toISOString().slice(0, 10);
+              const isOverdue = t.status === 'open' && !!t.due_date && t.due_date < today;
+              const isDone = t.status === 'done';
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onSelect(t)}
+                  className="w-full flex items-center gap-3 rounded-xl border border-border/10 bg-white/2 hover:bg-white/6 hover:border-primary/20 px-4 py-3 text-left transition-colors cursor-pointer"
+                >
+                  <div className={[
+                    'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
+                    isDone ? 'border-green-500 bg-green-500 text-white' :
+                    isOverdue ? 'border-orange-400' : 'border-border/40',
+                  ].join(' ')}>
+                    {isDone && <Check className="h-2.5 w-2.5" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${isDone ? 'text-text-secondary' : 'text-text-primary'}`}>
+                      {t.title}
+                    </p>
+                    {t.case_code && (
+                      <p className="text-xs text-primary font-mono truncate">{t.case_code}{t.case_title ? ` — ${t.case_title}` : ''}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {t.category && (
+                      <span className="text-[10px] text-text-secondary">{TASK_CATEGORIES[t.category]}</span>
+                    )}
+                    {t.due_date && (
+                      <span className={`text-[10px] ${isOverdue ? 'text-orange-400' : 'text-text-secondary'}`}>
+                        {formatDate(t.due_date)}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
     </div>
   );
 }

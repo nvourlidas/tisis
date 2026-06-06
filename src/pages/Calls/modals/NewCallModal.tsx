@@ -171,8 +171,6 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
           case_id: pendingTask.case_id || form.case_id,
           category: pendingTask.category || undefined,
           extra_data: pendingTask.extra_data,
-          fee: pendingTask.fee,
-          expenses: pendingTask.expenses,
         });
       }
       onCreated?.(callId);

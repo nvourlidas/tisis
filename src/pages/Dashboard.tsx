@@ -16,7 +16,7 @@ import TaskDetailModal from './Tasks/TaskDetailModal';
 import { CasesLineChart } from './Cases/components/CasesLineChart';
 import { ClientsLineChart } from './Clients/components/ClientsLineChart';
 import TaskForm, { type TaskFormValues } from './Tasks/TaskForm';
-import type { Task, TaskExpense } from './Tasks/taskUtils';
+import type { Task } from './Tasks/taskUtils';
 import type { Call } from './Calls/types';
 import { formatDate } from '../lib/dateUtils';
 
@@ -592,7 +592,7 @@ const MONTH_NAMES = [
 const DAY_NAMES = ['Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ', 'Κυρ'];
 
 type CalendarItem =
-  | { kind: 'task'; id: string; title: string; case_id?: string | null; case_code?: string | null; case_title?: string | null; status: string; due_date: string; fee?: number | null; expenses?: TaskExpense[] | null; category?: string | null; description?: string | null }
+  | { kind: 'task'; id: string; title: string; case_id?: string | null; case_code?: string | null; case_title?: string | null; status: string; due_date: string; category?: string | null; description?: string | null }
   | { kind: 'call'; id: string; caller_name: string | null; phone: string | null; direction: string; case_id?: string | null; case_code?: string | null; case_title?: string | null; created_at: string };
 
 type CalendarView = 'month' | 'week' | 'day';
@@ -652,8 +652,6 @@ function DashboardCalendar({
         case_id: values.case_id,
         category: values.category || undefined,
         extra_data: values.extra_data,
-        fee: values.fee,
-        expenses: values.expenses,
       });
       setNewTaskDate(null);
       onTaskCreated();
@@ -675,7 +673,7 @@ function DashboardCalendar({
     const map = new Map<string, CalendarItem[]>();
     const add = (day: string, item: CalendarItem) => { if (!map.has(day)) map.set(day, []); map.get(day)!.push(item); };
     for (const t of tasks) {
-      if (t.due_date) add(t.due_date, { kind: 'task', id: t.id, title: t.title, case_id: t.case_id, case_code: t.case_code, case_title: t.case_title, status: t.status, due_date: t.due_date, fee: t.fee, expenses: t.expenses, category: t.category, description: t.description });
+      if (t.due_date) add(t.due_date, { kind: 'task', id: t.id, title: t.title, case_id: t.case_id, case_code: t.case_code, case_title: t.case_title, status: t.status, due_date: t.due_date, category: t.category, description: t.description });
     }
     for (const c of calls) {
       const day = c.created_at.slice(0, 10);
@@ -913,8 +911,6 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
             if (item.kind === 'task') {
               const done = item.status === 'done';
               const col = taskDueColor(item.due_date, todayStr, item.status);
-              const totalExpenses = item.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
-              const hasFinancials = item.fee || (item.expenses?.length ?? 0) > 0;
               return (
                 <div key={item.id} onClick={() => onSelectTask(item as unknown as Task)} className={`rounded-xl border px-4 py-3 space-y-2 transition-all cursor-pointer ${col ? DUE_COLOR_CARD[col] : done ? 'border-green-500/15 bg-green-500/5 opacity-70 hover:opacity-90' : 'border-border/10 bg-background hover:bg-secondary-background'}`}>
                   <div className="flex items-start gap-3">
@@ -958,16 +954,6 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  {hasFinancials && (
-                    <div className="flex flex-wrap gap-3 pl-7 text-xs">
-                      {item.fee != null && item.fee > 0 && (
-                        <span className="text-green-500">Αμοιβή: <strong>{item.fee.toFixed(2)} €</strong></span>
-                      )}
-                      {(item.expenses?.length ?? 0) > 0 && (
-                        <span className="text-red-400">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({item.expenses!.length})</span>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             }

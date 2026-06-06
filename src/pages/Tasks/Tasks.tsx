@@ -9,7 +9,7 @@ import { supabase } from '../../lib/supabase';
 import {
   fetchTasksForMonth, fetchTaskCounts, fetchDashboardOpenTasks, completeTask, reopenTask, createTask, updateTask, deleteTask,
   searchFullTasks,
-  TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData, type CourtData,
+  TASK_CATEGORIES, extraDataToDescription, type Task, type TaskCategory, type LegalActData, type AppointmentData, type CourtData,
 } from './taskUtils';
 import { fetchCallsForMonth, deleteCall, searchCalls } from '../Calls/callUtils';
 import EditCallModal from '../Calls/modals/EditCallModal';
@@ -178,14 +178,13 @@ export default function Tasks() {
     try {
       await createTask(tenantId, {
         title: values.title,
-        description: values.description,
+        description: extraDataToDescription(values.category || null, values.extra_data) ?? values.description,
         due_date: values.due_date,
         due_time: values.due_time || undefined,
         case_id: values.case_id,
         category: values.category || undefined,
         extra_data: values.extra_data,
-        fee: values.fee,
-        expenses: values.expenses,
+        hours: values.hours,
         linked_task_ids: values.linked_task_ids,
       });
       setShowCreate(false);
@@ -205,14 +204,13 @@ export default function Tasks() {
       await updateTask({
         id: editingTask.id,
         title: values.title,
-        description: values.description,
+        description: extraDataToDescription(values.category || null, values.extra_data) ?? values.description,
         due_date: values.due_date,
         due_time: values.due_time || undefined,
         case_id: values.case_id || null,
         category: values.category || undefined,
         extra_data: values.extra_data,
-        fee: values.fee,
-        expenses: values.expenses,
+        hours: values.hours,
         linked_task_ids: values.linked_task_ids,
       });
       setEditingTask(null);
@@ -642,7 +640,9 @@ export default function Tasks() {
                               done ? 'bg-green-500/10 text-green-400 opacity-60' :
                               color ? DUE_COLOR_CHIP[color] :
                               task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
-                              {task.title}
+                              {(task.case_code || task.category)
+                                ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                                : task.title}
                             </span>
                           );
                         })}
@@ -713,7 +713,9 @@ export default function Tasks() {
                               done ? 'bg-green-500/10 text-green-400 opacity-60' :
                               color ? DUE_COLOR_CHIP[color] :
                               task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
-                              {task.title}
+                              {(task.case_code || task.category)
+                                ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                                : task.title}
                             </span>
                           );
                         })}
@@ -961,10 +963,17 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavig
         </button>
         <div className="flex-1 min-w-0">
           <button onClick={() => onNavigate(`/tasks/${task.id}`)} className="text-left hover:underline cursor-pointer">
-            <p className={`text-sm font-medium ${done ? 'text-text-secondary' : 'text-text-primary'}`}>{task.title}</p>
+            <p className={`text-sm font-medium ${done ? 'text-text-secondary' : 'text-text-primary'}`}>
+              {(task.case_code || task.category)
+                ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                : task.title}
+            </p>
+            {(task.case_code || task.category) && (
+              <p className={`text-xs ${done ? 'text-text-secondary/60' : 'text-text-secondary'}`}>{task.title}</p>
+            )}
           </button>
-          {task.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{task.description}</p>}
           <ExtraDataSummary task={task} />
+          {task.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{task.description}</p>}
           <div className="flex flex-wrap items-center gap-2 mt-1">
             {task.case_code && (
               <button onClick={() => task.case_id && onNavigate(`/cases/${task.case_id}`)}

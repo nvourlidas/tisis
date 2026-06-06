@@ -1,9 +1,10 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Check, RotateCcw, X, AlertCircle, ChevronLeft, ChevronRight, Pencil, Search, Trash2, List, CalendarDays } from 'lucide-react';
+import { Plus, Check, RotateCcw, X, ChevronLeft, ChevronRight, Pencil, Search, Trash2, List, CalendarDays, Clock, Link2 } from 'lucide-react';
 import { fetchCaseTasks, completeTask, reopenTask } from '../caseUtils';
-import { updateTask, deleteTask, TASK_CATEGORIES, type TaskCategory, type LegalActData, type AppointmentData, type TaskExpense } from '../../Tasks/taskUtils';
+import { updateTask, deleteTask, extraDataToDescription, fetchCategoryRates, calcTaskAmount, TASK_CATEGORIES, searchFullTasks, type Task, type TaskCategory, type CategoryRate, type LegalActData, type AppointmentData } from '../../Tasks/taskUtils';
 import { supabase } from '../../../lib/supabase';
+import { formatDate } from '../../../lib/dateUtils';
 import TaskForm, { type TaskFormValues } from '../../Tasks/TaskForm';
 import type { CaseTask } from '../types';
 
@@ -26,6 +27,23 @@ function weekStart(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+function taskDueColor(dueDate: string | null | undefined, todayStr: string, status: string) {
+  if (status === 'done' || !dueDate) return null;
+  const diff = Math.round((new Date(dueDate + 'T00:00:00').getTime() - new Date(todayStr + 'T00:00:00').getTime()) / 86400000);
+  if (diff <= 0) return 'red';
+  if (diff <= 7) return 'purple';
+  if (diff <= 20) return 'orange';
+  if (diff <= 30) return 'yellow';
+  return null;
+}
+
+const DUE_COLOR_CHIP: Record<string, string> = {
+  red:    'bg-red-500/15 text-red-500',
+  purple: 'bg-purple-500/15 text-purple-500',
+  orange: 'bg-orange-500/15 text-orange-500',
+  yellow: 'bg-yellow-500/15 text-yellow-500',
+};
+
 const CATEGORY_COLORS: Record<TaskCategory, string> = {
   legal_act:    'bg-blue-500/15 text-blue-500',
   lawsuit:      'bg-orange-500/15 text-orange-500',
@@ -37,7 +55,7 @@ const CATEGORY_COLORS: Record<TaskCategory, string> = {
 
 type Props = { caseId: string; tenantId?: string };
 
-export default function CaseTasks({ caseId }: Props) {
+export default function CaseTasks({ caseId, tenantId = '' }: Props) {
   const navigate = useNavigate();
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
@@ -51,9 +69,12 @@ export default function CaseTasks({ caseId }: Props) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [rates, setRates] = useState<CategoryRate[]>([]);
 
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linking, setLinking] = useState(false);
 
   const [displayMode, setDisplayMode] = useState<'list' | 'calendar'>('list');
   const [view, setView] = useState<CalendarView>('month');
@@ -74,6 +95,7 @@ export default function CaseTasks({ caseId }: Props) {
   };
 
   useEffect(() => { load(); }, [caseId]);
+  useEffect(() => { if (tenantId) fetchCategoryRates(tenantId).then(setRates).catch(() => {}); }, [tenantId]);
 
   const toggle = async (task: CaseTask) => {
     setToggling(task.id);
@@ -94,12 +116,11 @@ export default function CaseTasks({ caseId }: Props) {
         body: {
           case_id: caseId,
           title: values.title,
-          description: values.description,
+          description: extraDataToDescription(values.category || null, values.extra_data) ?? values.description,
           due_date: values.due_date,
           category: values.category || null,
           extra_data: values.extra_data,
-          fee: values.fee,
-          expenses: values.expenses,
+          hours: values.hours,
         },
       });
       if (error) throw error;
@@ -120,13 +141,12 @@ export default function CaseTasks({ caseId }: Props) {
       await updateTask({
         id: editingTask.id,
         title: values.title,
-        description: values.description,
+        description: extraDataToDescription(values.category || null, values.extra_data) ?? values.description,
         due_date: values.due_date,
         case_id: values.case_id || caseId,
         category: values.category || undefined,
         extra_data: values.extra_data,
-        fee: values.fee,
-        expenses: values.expenses,
+        hours: values.hours,
       });
       setEditingTask(null);
       load();
@@ -134,6 +154,18 @@ export default function CaseTasks({ caseId }: Props) {
       setSaveError(err?.message ?? 'Αποτυχία αποθήκευσης.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleLinkTask = async (task: Task) => {
+    setLinking(true);
+    try {
+      const { error } = await supabase.from('tasks').update({ case_id: caseId }).eq('id', task.id);
+      if (error) throw error;
+      setShowLinkModal(false);
+      load();
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -230,8 +262,7 @@ export default function CaseTasks({ caseId }: Props) {
     case_id: '',
     category: t.category ?? '',
     extra_data: t.extra_data ?? null,
-    fee: t.fee ?? null,
-    expenses: t.expenses ?? [],
+    hours: t.hours ?? null,
     linked_task_ids: [],
   });
 
@@ -270,6 +301,11 @@ export default function CaseTasks({ caseId }: Props) {
               </button>
             )}
           </div>
+          <button onClick={() => setShowLinkModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer">
+            <Link2 className="h-3.5 w-3.5" />
+            Σύνδεση Εργασίας
+          </button>
           <button onClick={() => { setShowForm(v => !v); setEditingTask(null); }}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/15 text-sm text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer">
             <Plus className="h-3.5 w-3.5" />
@@ -307,6 +343,16 @@ export default function CaseTasks({ caseId }: Props) {
         onClose={() => { setEditingTask(null); setSaveError(null); }}
       />
 
+      {showLinkModal && (
+        <LinkTaskModal
+          tenantId={tenantId}
+          alreadyLinked={tasks.map(t => t.id)}
+          linking={linking}
+          onSelect={handleLinkTask}
+          onClose={() => setShowLinkModal(false)}
+        />
+      )}
+
       {/* Category filter */}
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setCategoryFilter(null)}
@@ -330,6 +376,7 @@ export default function CaseTasks({ caseId }: Props) {
           tasks={filteredTasks}
           todayStr={todayStr}
           toggling={toggling}
+          rates={rates}
           onToggle={toggle}
           onEdit={setEditingTask}
           onDelete={doDeleteTask}
@@ -411,7 +458,7 @@ export default function CaseTasks({ caseId }: Props) {
                   ) : (
                     <div className="space-y-2">
                       {selectedTasks.map(task => (
-                        <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
+                        <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} rates={rates} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                       ))}
                     </div>
                   )}
@@ -464,7 +511,7 @@ export default function CaseTasks({ caseId }: Props) {
                 ) : (
                   <div className="space-y-2">
                     {(tasksByDay.get(anchor) ?? []).map(task => (
-                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
+                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} rates={rates} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                     ))}
                   </div>
                 )}
@@ -479,7 +526,7 @@ export default function CaseTasks({ caseId }: Props) {
                 ) : (
                   <div className="space-y-2">
                     {(tasksByDay.get(anchor) ?? []).map(task => (
-                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
+                      <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} rates={rates} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                     ))}
                   </div>
                 )}
@@ -492,7 +539,7 @@ export default function CaseTasks({ caseId }: Props) {
               <h3 className="text-sm font-semibold text-text-secondary">Χωρίς προθεσμία ({noDueDateTasks.length})</h3>
               <div className="space-y-2">
                 {noDueDateTasks.map(task => (
-                  <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
+                  <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling} rates={rates} onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
                 ))}
               </div>
             </div>
@@ -505,10 +552,11 @@ export default function CaseTasks({ caseId }: Props) {
 
 // ── Task list view ────────────────────────────────────────────────────────────
 
-function TaskListView({ tasks, todayStr, toggling, onToggle, onEdit, onDelete, onNavigate }: {
+function TaskListView({ tasks, todayStr, toggling, rates, onToggle, onEdit, onDelete, onNavigate }: {
   tasks: CaseTask[];
   todayStr: string;
   toggling: string | null;
+  rates: CategoryRate[];
   onToggle: (t: CaseTask) => void;
   onEdit: (t: CaseTask) => void;
   onDelete: (t: CaseTask) => void;
@@ -528,7 +576,7 @@ function TaskListView({ tasks, todayStr, toggling, onToggle, onEdit, onDelete, o
       <div className="space-y-2">
         <h4 className={`text-xs font-semibold uppercase tracking-wide ${accent ?? 'text-text-secondary'}`}>{label} ({items.length})</h4>
         {items.map(t => (
-          <TaskRow key={t.id} task={t} todayStr={todayStr} toggling={toggling} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} onNavigate={onNavigate} />
+          <TaskRow key={t.id} task={t} todayStr={todayStr} toggling={toggling} rates={rates} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} onNavigate={onNavigate} />
         ))}
       </div>
     );
@@ -585,10 +633,11 @@ function EditTaskModal({ task, saving, error, initialValues, onSubmit, onClose }
 
 // ── Task row ──────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavigate }: {
+function TaskRow({ task, todayStr, toggling, rates, onToggle, onEdit, onDelete, onNavigate }: {
   task: CaseTask;
   todayStr: string;
   toggling: string | null;
+  rates: CategoryRate[];
   onToggle: (t: CaseTask) => void;
   onEdit: (t: CaseTask) => void;
   onDelete: (t: CaseTask) => void;
@@ -596,9 +645,7 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavig
 }) {
   const overdue = task.status === 'open' && !!task.due_date && task.due_date < todayStr;
   const done = task.status === 'done';
-
-  const totalExpenses = task.expenses?.reduce((s, e) => s + (e as TaskExpense).amount, 0) ?? 0;
-  const hasFinancials = task.fee != null || (task.expenses?.length ?? 0) > 0;
+  const dueColor = taskDueColor(task.due_date, todayStr, task.status);
 
   return (
     <div className={`rounded-xl border px-4 py-3 space-y-2 ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
@@ -625,11 +672,26 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavig
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {overdue && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/15 text-orange-400">
-              <AlertCircle className="h-2.5 w-2.5" />
-              Ληξ/θεσμη
+        <div className="flex items-center gap-2 shrink-0">
+          {task.hours != null && task.hours > 0 && (() => {
+            const amt = calcTaskAmount(task.hours, rates, task.category);
+            return (
+              <div className="flex flex-col items-end gap-0.5 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/15">
+                <div className="flex items-center gap-1 text-blue-400">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span className="text-sm font-semibold">{task.hours}ω</span>
+                </div>
+                {amt != null && (
+                  <span className="text-xs font-medium text-blue-300">
+                    {new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(amt)}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+          {task.due_date && (
+            <span className={`text-[14px] font-medium px-2 py-1 rounded-lg ${dueColor ? DUE_COLOR_CHIP[dueColor] : done ? 'text-text-secondary' : 'bg-white/8 text-text-secondary'}`}>
+              {new Date(task.due_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             </span>
           )}
           <button onClick={() => onEdit(task)}
@@ -642,16 +704,6 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavig
           </button>
         </div>
       </div>
-      {hasFinancials && (
-        <div className="flex flex-wrap gap-3 pl-8 text-xs text-green-400">
-          {task.fee != null && task.fee > 0 && (
-            <span>Αμοιβή: <strong>{task.fee.toFixed(2)} €</strong></span>
-          )}
-          {(task.expenses?.length ?? 0) > 0 && (
-            <span className="text-red-400">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({task.expenses!.length})</span>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -681,4 +733,168 @@ function ExtraDataSummary({ task }: { task: CaseTask }) {
 
   if (!lines.length) return null;
   return <div className="text-xs text-text-secondary mt-0.5 space-y-0.5">{lines}</div>;
+}
+
+// ── Link task modal ───────────────────────────────────────────────────────────
+
+const MODAL_MONTH_NAMES = [
+  'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος',
+  'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος',
+];
+
+function LinkTaskModal({ tenantId, alreadyLinked, linking, onSelect, onClose }: {
+  tenantId: string;
+  alreadyLinked: string[];
+  linking: boolean;
+  onSelect: (task: Task) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Task[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [category, setCategory] = useState<TaskCategory | null>(null);
+  const [filterYear, setFilterYear] = useState<number | null>(null);
+  const [filterMonth, setFilterMonth] = useState<number | null>(null);
+  const currentYear = new Date().getFullYear();
+
+  useEffect(() => {
+    if (!query.trim() || !tenantId) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const all = await searchFullTasks(tenantId, query.trim());
+        setResults(all);
+      } finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, tenantId]);
+
+  const filtered = results.filter(t => {
+    if (alreadyLinked.includes(t.id)) return false;
+    if (category && t.category !== category) return false;
+    if (filterYear !== null && t.due_date) {
+      if (new Date(t.due_date + 'T00:00:00').getFullYear() !== filterYear) return false;
+    }
+    if (filterMonth !== null && t.due_date) {
+      if (new Date(t.due_date + 'T00:00:00').getMonth() !== filterMonth) return false;
+    }
+    return true;
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-xl max-h-[80vh] flex flex-col rounded-2xl border border-border/20 bg-secondary-background shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/10 shrink-0">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            Σύνδεση Υπάρχουσας Εργασίας
+          </h2>
+          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 text-text-secondary cursor-pointer">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-3 space-y-3 border-b border-border/10 shrink-0">
+          <div className="flex items-center gap-2 rounded-xl border border-border/15 bg-background px-3 py-2">
+            <Search className="h-4 w-4 text-text-secondary shrink-0" />
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Αναζήτηση εργασίας…"
+              className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-secondary outline-none"
+            />
+            {searching && <RotateCcw className="h-3.5 w-3.5 animate-spin text-text-secondary shrink-0" />}
+            {query && !searching && (
+              <button onClick={() => setQuery('')} className="text-text-secondary hover:text-text-primary cursor-pointer shrink-0">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={category ?? ''}
+              onChange={e => setCategory(e.target.value ? e.target.value as TaskCategory : null)}
+              className="bg-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλες οι κατηγορίες</option>
+              {(Object.keys(TASK_CATEGORIES) as TaskCategory[]).map(c => (
+                <option key={c} value={c}>{TASK_CATEGORIES[c]}</option>
+              ))}
+            </select>
+            <select
+              value={filterYear ?? ''}
+              onChange={e => setFilterYear(e.target.value ? Number(e.target.value) : null)}
+              className="bg-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλα τα έτη</option>
+              {Array.from({ length: currentYear - 1999 }, (_, i) => 2000 + i).reverse().map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <select
+              value={filterMonth ?? ''}
+              onChange={e => setFilterMonth(e.target.value !== '' ? Number(e.target.value) : null)}
+              className="bg-background border border-border/15 rounded-lg px-2 py-1 text-xs text-text-primary outline-none cursor-pointer"
+            >
+              <option value="">Όλοι οι μήνες</option>
+              {MODAL_MONTH_NAMES.map((name, i) => (
+                <option key={i} value={i}>{name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          {!query.trim() ? (
+            <p className="text-sm text-text-secondary text-center py-8">Πληκτρολογήστε για αναζήτηση.</p>
+          ) : filtered.length === 0 && !searching ? (
+            <p className="text-sm text-text-secondary text-center py-8">Δεν βρέθηκαν εργασίες.</p>
+          ) : (
+            filtered.map(t => {
+              const today = new Date().toISOString().slice(0, 10);
+              const isOverdue = t.status === 'open' && !!t.due_date && t.due_date < today;
+              const isDone = t.status === 'done';
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onSelect(t)}
+                  disabled={linking}
+                  className="w-full flex items-center gap-3 rounded-xl border border-border/10 bg-white/2 hover:bg-white/6 hover:border-primary/20 px-4 py-3 text-left transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  <div className={[
+                    'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
+                    isDone ? 'border-green-500 bg-green-500 text-white' :
+                    isOverdue ? 'border-orange-400' : 'border-border/40',
+                  ].join(' ')}>
+                    {isDone && <Check className="h-2.5 w-2.5" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${isDone ? 'text-text-secondary' : 'text-text-primary'}`}>
+                      {t.title}
+                    </p>
+                    {t.case_code && (
+                      <p className="text-xs text-primary font-mono truncate">{t.case_code}{t.case_title ? ` — ${t.case_title}` : ''}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {t.category && (
+                      <span className="text-[10px] text-text-secondary">{TASK_CATEGORIES[t.category]}</span>
+                    )}
+                    {t.due_date && (
+                      <span className={`text-[10px] ${isOverdue ? 'text-orange-400' : 'text-text-secondary'}`}>
+                        {formatDate(t.due_date)}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -34,12 +34,64 @@ export type CourtData = {
 
 export type TaskExpense = { description: string; amount: number };
 
+export function extraDataToDescription(
+  category: TaskCategory | null | undefined,
+  extra_data: LegalActData | AppointmentData | CourtData | null | undefined,
+): string | null {
+  if (!category || !extra_data) return null;
+  const parts: string[] = [];
+  if (category === 'legal_act') {
+    const d = extra_data as LegalActData;
+    if (d.authority) parts.push(`Αρχή: ${d.authority}`);
+    if (d.protocol_number) parts.push(`Αρ. Πρωτ.: ${d.protocol_number}`);
+    if (d.creation_date) parts.push(`Ημ. Δημιουργίας: ${new Date(d.creation_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`);
+    if (d.decision?.number) parts.push(`Αρ. Απόφασης: ${d.decision.number}`);
+    if (d.decision?.date) parts.push(`Ημ. Απόφασης: ${new Date(d.decision.date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`);
+    if (d.decision?.description) parts.push(`Απόφαση: ${d.decision.description}`);
+  } else if (category === 'lawsuit') {
+    const d = extra_data as LegalActData;
+    if (d.authority) parts.push(`Δικαστήριο: ${d.authority}`);
+    if (d.gak) parts.push(`ΓΑΚ: ${d.gak}`);
+    if (d.eak) parts.push(`ΕΑΚ: ${d.eak}`);
+  } else if (category === 'appointment') {
+    const d = extra_data as AppointmentData;
+    if (d.start_datetime) {
+      const start = new Date(d.start_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      parts.push(`Έναρξη: ${start}`);
+    }
+    if (d.end_datetime) {
+      const end = new Date(d.end_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      parts.push(`Λήξη: ${end}`);
+    }
+  } else if (category === 'court') {
+    const d = extra_data as CourtData;
+    if (d.start_datetime) {
+      const start = new Date(d.start_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      parts.push(`Έναρξη: ${start}`);
+    }
+    if (d.end_datetime) {
+      const end = new Date(d.end_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      parts.push(`Λήξη: ${end}`);
+    }
+    if (d.decision_number) parts.push(`Αρ. Απόφασης: ${d.decision_number}`);
+    if (d.decision_date) parts.push(`Ημ. Έκδοσης: ${new Date(d.decision_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`);
+  }
+  return parts.length ? parts.join('\n') : null;
+}
+
 export type LinkedTask = {
   id: string;
   title: string;
   due_date: string | null;
   status: 'open' | 'done';
   category: TaskCategory | null;
+};
+
+export type CategoryRate = {
+  id: string;
+  tenant_id: string;
+  category: TaskCategory;
+  rate_per_hour: number;
 };
 
 export type Task = {
@@ -57,6 +109,7 @@ export type Task = {
   extra_data: LegalActData | AppointmentData | null;
   fee: number | null;
   expenses: TaskExpense[] | null;
+  hours: number | null;
   // joined
   case_code?: string | null;
   case_title?: string | null;
@@ -105,6 +158,7 @@ function mapTask(r: any): Task {
     extra_data: r.extra_data ?? null,
     fee: r.fee ?? null,
     expenses: r.expenses ?? null,
+    hours: r.hours ?? null,
   };
 }
 
@@ -201,6 +255,11 @@ export async function deleteTask(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function updateTaskHours(id: string, hours: number | null): Promise<void> {
+  const { error } = await supabase.from('tasks').update({ hours }).eq('id', id);
+  if (error) throw error;
+}
+
 export async function updateTask(form: {
   id: string;
   title: string;
@@ -212,6 +271,7 @@ export async function updateTask(form: {
   extra_data?: object | null;
   fee?: number | null;
   expenses?: TaskExpense[] | null;
+  hours?: number | null;
   linked_task_ids?: string[];
 }): Promise<void> {
   const { error } = await supabase.functions.invoke('task-update', { body: form });
@@ -219,14 +279,49 @@ export async function updateTask(form: {
 }
 
 export async function searchFullTasks(tenantId: string, query: string): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*, cases(code, title, clients(name))')
-    .eq('tenant_id', tenantId)
-    .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
-    .order('due_date', { ascending: true, nullsFirst: false });
-  if (error) throw error;
-  return (data ?? []).map(mapTask);
+  const [taskRes, caseRes] = await Promise.all([
+    supabase
+      .from('tasks')
+      .select('*, cases(code, title, clients(name))')
+      .eq('tenant_id', tenantId)
+      .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+      .order('due_date', { ascending: true, nullsFirst: false }),
+    supabase
+      .from('cases')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .or(`code.ilike.%${query}%,title.ilike.%${query}%`),
+  ]);
+  if (taskRes.error) throw taskRes.error;
+  if (caseRes.error) throw caseRes.error;
+
+  const caseIds = (caseRes.data ?? []).map(c => c.id);
+  let caseTaskRows: typeof taskRes.data = [];
+  if (caseIds.length > 0) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*, cases(code, title, clients(name))')
+      .eq('tenant_id', tenantId)
+      .in('case_id', caseIds)
+      .order('due_date', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    caseTaskRows = data ?? [];
+  }
+
+  const seen = new Set<string>();
+  const merged: Task[] = [];
+  for (const row of [...(taskRes.data ?? []), ...caseTaskRows]) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    merged.push(mapTask(row));
+  }
+  merged.sort((a, b) => {
+    if (!a.due_date && !b.due_date) return 0;
+    if (!a.due_date) return 1;
+    if (!b.due_date) return -1;
+    return a.due_date.localeCompare(b.due_date);
+  });
+  return merged;
 }
 
 export async function searchTasks(tenantId: string, query: string, excludeId?: string): Promise<LinkedTask[]> {
@@ -271,6 +366,7 @@ export async function createTask(_tenantId: string, form: {
   extra_data?: object | null;
   fee?: number | null;
   expenses?: TaskExpense[] | null;
+  hours?: number | null;
   linked_task_ids?: string[];
 }): Promise<{ id: string }> {
   const { data, error } = await supabase.functions.invoke('task-create', { body: form });
@@ -366,4 +462,29 @@ export function groupTasks(tasks: Task[]) {
   }
 
   return { overdue, today: todayTasks, upcoming, noDueDate, done };
+}
+
+// ── Category Rates ────────────────────────────────────────────────────────────
+
+export async function fetchCategoryRates(tenantId: string): Promise<CategoryRate[]> {
+  const { data, error } = await supabase
+    .from('category_rates')
+    .select('*')
+    .eq('tenant_id', tenantId);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function upsertCategoryRate(tenantId: string, category: TaskCategory, rate_per_hour: number): Promise<void> {
+  const { error } = await supabase
+    .from('category_rates')
+    .upsert({ tenant_id: tenantId, category, rate_per_hour }, { onConflict: 'tenant_id,category' });
+  if (error) throw error;
+}
+
+export function calcTaskAmount(hours: number | null, rates: CategoryRate[], category: TaskCategory | null): number | null {
+  if (!hours || !category) return null;
+  const rate = rates.find(r => r.category === category);
+  if (!rate || rate.rate_per_hour === 0) return null;
+  return hours * rate.rate_per_hour;
 }
