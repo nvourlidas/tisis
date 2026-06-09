@@ -565,7 +565,7 @@ export default function Tasks() {
         </div>
       ) : (
         <div className="animate-fade-in-up stagger-2 space-y-5">
-          <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-5 items-start">
+          <div className="grid grid-cols-1 xl:grid-cols-[3fr_1fr] gap-5 items-start">
           <div className="min-w-0 rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -621,38 +621,52 @@ export default function Tasks() {
                   const ds = dayStr(day);
                   const dayTasks = tasksByDay.get(ds) ?? [];
                   const dayCalls = callsByDay.get(ds) ?? [];
-                  const total = dayTasks.length + dayCalls.length;
                   const isToday = ds === todayStr;
                   const isSelected = ds === selectedDay;
                   return (
                     <button key={ds} onClick={() => setSelectedDay(isSelected ? null : ds)}
-                      className={['relative min-h-16 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1',
+                      className={['relative min-h-24 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1 overflow-visible',
                         isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
                         isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}>
                       <span className={['text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0',
                         isToday ? 'bg-primary text-white' : 'text-text-secondary'].join(' ')}>{day}</span>
-                      <div className="flex flex-col gap-0.5 overflow-hidden w-full">
-                        {!showOnlyCalls && dayTasks.slice(0, 2).map(task => {
+                      <div className="flex flex-col gap-0.5 w-full">
+                        {!showOnlyCalls && dayTasks.map(task => {
                           const done = task.status === 'done';
                           const color = taskDueColor(task.due_date, todayStr, task.status);
                           return (
-                            <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full',
-                              done ? 'bg-green-500/10 text-green-400 opacity-60' :
-                              color ? DUE_COLOR_CHIP[color] :
-                              task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
-                              {(task.case_code || task.category)
-                                ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
-                                : task.title}
-                            </span>
+                            <div key={task.id} className="relative group/chip w-full">
+                              <span
+                                onClick={e => { e.stopPropagation(); navigate(`/tasks/${task.id}`); }}
+                                className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full block cursor-pointer hover:brightness-125 transition-all',
+                                  done ? 'bg-green-500/10 text-green-400 opacity-60' :
+                                  color ? DUE_COLOR_CHIP[color] :
+                                  task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
+                                {(task.case_code || task.category)
+                                  ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                                  : task.title}
+                              </span>
+                              <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/chip:block w-72 rounded-xl border border-border/20 bg-secondary-background shadow-2xl p-3 space-y-2 pointer-events-none">
+                                <p className="text-sm font-semibold text-text-primary leading-snug">{task.title}</p>
+                                {task.case_code && <p className="text-xs text-primary font-mono">{task.case_code}{task.case_title ? ` — ${task.case_title}` : ''}</p>}
+                                {task.description && <p className="text-xs text-text-secondary leading-relaxed border-t border-border/10 pt-2">{task.description}</p>}
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border/10 pt-2">
+                                  {task.category && <span className="text-xs text-text-secondary">{TASK_CATEGORIES[task.category]}</span>}
+                                  {task.due_date && <span className="text-xs text-text-secondary">{new Date(task.due_date + 'T00:00:00').toLocaleDateString('el-GR')}{task.due_time ? ` ${task.due_time}` : ''}</span>}
+                                  <span className={`text-xs font-semibold ${done ? 'text-green-400' : color === 'red' ? 'text-red-400' : color === 'purple' ? 'text-purple-400' : color === 'orange' ? 'text-orange-400' : color === 'yellow' ? 'text-yellow-400' : 'text-text-secondary'}`}>
+                                    {done ? 'Ολοκληρωμένη' : color === 'red' ? 'Ληξιπρόθεσμη' : 'Ανοιχτή'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
                           );
                         })}
-                        {dayCalls.slice(0, showOnlyCalls ? 2 : (dayTasks.length >= 2 ? 0 : 2 - dayTasks.length)).map(call => (
+                        {dayCalls.map(call => (
                           <span key={call.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full',
                             call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
                             {call.caller_name ?? call.phone ?? 'Γεγονός'}
                           </span>
                         ))}
-                        {(showOnlyCalls ? dayCalls.length : total) > 2 && <span className="text-xs text-text-secondary px-1">+{(showOnlyCalls ? dayCalls.length : total) - 2} ακόμα</span>}
                       </div>
                     </button>
                   );
