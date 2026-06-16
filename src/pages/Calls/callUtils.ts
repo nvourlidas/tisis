@@ -37,7 +37,7 @@ export async function fetchCallsForMonth(tenantId: string, year: number, month: 
 export async function fetchUnlinkedCalls(tenantId: string): Promise<Call[]> {
   const { data, error } = await supabase
     .from('calls')
-    .select('id, phone, caller_name, direction, description, follow_up_required, created_at')
+    .select('id, phone, caller_name, direction, description, follow_up_required, follow_up_notes, created_at')
     .eq('tenant_id', tenantId)
     .is('case_id', null)
     .order('created_at', { ascending: false });
@@ -145,6 +145,7 @@ export type CallUpdateData = {
   direction?: import('./types').CallDirection;
   description?: string;
   follow_up_required?: boolean;
+  follow_up_notes?: string;
   case_id?: string | null;
   contact_id?: string | null;
   created_at?: string;
@@ -171,6 +172,20 @@ export async function searchCallsForLinking(tenantId: string, query: string): Pr
 export async function updateCall(callId: string, data: CallUpdateData): Promise<void> {
   const { error } = await supabase.from('calls').update(data).eq('id', callId);
   if (error) throw error;
+}
+
+export async function fetchCall(callId: string): Promise<Call | null> {
+  const { data, error } = await supabase
+    .from('calls')
+    .select('*, cases(code, title), contacts(name, phone)')
+    .eq('id', callId)
+    .single();
+  if (error) return null;
+  return {
+    ...data,
+    case_code: data.cases?.code ?? null,
+    case_title: data.cases?.title ?? null,
+  };
 }
 
 export async function fetchCallsByContact(contactId: string): Promise<Call[]> {

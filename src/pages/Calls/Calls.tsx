@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Phone, Users, Plus, AlertCircle, Link2, RotateCcw, Search, CalendarDays, X, Pencil, Trash2 } from 'lucide-react';
+import { Phone, Users, Mail, Plus, AlertCircle, Link2, RotateCcw, Search, CalendarDays, X, Pencil, Trash2 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { fetchCalls, linkCallToCase, searchCasesForCall, deleteCall } from './callUtils';
 import type { Call } from './types';
@@ -136,7 +136,7 @@ export default function Calls() {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [directionFilter, setDirectionFilter] = useState<'all' | 'phone' | 'inperson'>('all');
+  const [directionFilter, setDirectionFilter] = useState<'all' | 'phone' | 'inperson' | 'email'>('all');
   const [linkedFilter, setLinkedFilter] = useState<'all' | 'linked' | 'unlinked'>('all');
   const [datePreset, setDatePreset] = useState<DatePreset>('');
   const [dateFrom, setDateFrom] = useState('');
@@ -210,11 +210,13 @@ export default function Calls() {
       header: 'Τύπος',
       render: (c) => (
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-          c.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
+          c.direction === 'phone' ? 'bg-green-500/10 text-green-500'
+          : c.direction === 'email' ? 'bg-purple-500/10 text-purple-500'
+          : 'bg-blue-500/10 text-blue-500'
         }`}>
-          {c.direction === 'phone'
-            ? <Phone className="h-3.5 w-3.5" />
-            : <Users className="h-3.5 w-3.5" />}
+          {c.direction === 'phone' ? <Phone className="h-3.5 w-3.5" />
+          : c.direction === 'email' ? <Mail className="h-3.5 w-3.5" />
+          : <Users className="h-3.5 w-3.5" />}
         </div>
       ),
       sortValue: (c) => c.direction,
@@ -234,9 +236,14 @@ export default function Calls() {
     {
       key: 'follow_up',
       header: 'Follow-up',
-      render: (c) => c.follow_up_required
-        ? <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400">Follow-up</span>
-        : <span className="text-text-secondary">—</span>,
+      render: (c) => c.follow_up_required ? (
+        <div className="flex flex-col gap-0.5">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 w-fit">Follow-up</span>
+          {c.follow_up_notes && (
+            <span className="text-xs text-text-secondary line-clamp-2 max-w-48">{c.follow_up_notes}</span>
+          )}
+        </div>
+      ) : <span className="text-text-secondary">—</span>,
       sortValue: (c) => (c.follow_up_required ? 'yes' : 'no'),
     },
     {
@@ -347,6 +354,7 @@ export default function Calls() {
             <option value="all">Όλοι οι τύποι</option>
             <option value="phone">Τηλεφώνημα</option>
             <option value="inperson">Δια ζώσης</option>
+            <option value="email">Email</option>
           </select>
           <select className="select shrink-0" value={linkedFilter} onChange={(e) => setLinkedFilter(e.target.value as typeof linkedFilter)}>
             <option value="all">Όλα τα γεγονότα</option>
@@ -426,7 +434,7 @@ export default function Calls() {
             columns={columns}
             data={filteredCalls}
             rowKey={(c) => c.id}
-            onRowClick={(c) => { if (c.case_id) navigate(`/cases/${c.case_id}`); }}
+            onRowClick={(c) => navigate(`/calls/${c.id}`)}
             rowClassName={(c) => (!c.case_id && !c.no_case_intentional) ? 'bg-orange-500/5' : ''}
             emptyState={
               <div className="flex flex-col items-center justify-center py-12 text-text-secondary gap-3">

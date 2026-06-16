@@ -82,8 +82,6 @@ export default function Tasks() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [noDueDateTasksRaw, setNoDueDateTasksRaw] = useState<Task[]>([]);
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
-  const [overduePage, setOverduePage] = useState(0);
-  const OVERDUE_PAGE_SIZE = 10;
   const [counts, setCounts] = useState<{ open: number; done: number }>({ open: 0, done: 0 });
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -92,6 +90,7 @@ export default function Tasks() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingCall, setEditingCall] = useState<Call | null>(null);
+  const [showOverdue, setShowOverdue] = useState(false);
 
   const doDeleteTask = async (t: Task) => {
     if (!confirm('Διαγραφή εργασίας; Η ενέργεια δεν αναιρείται.')) return;
@@ -285,6 +284,7 @@ export default function Tasks() {
       if (!map.has(t.due_date)) map.set(t.due_date, []);
       map.get(t.due_date)!.push(t);
     }
+    for (const arr of map.values()) arr.sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99'));
     return map;
   }, [filteredTasks]);
 
@@ -295,8 +295,32 @@ export default function Tasks() {
       if (!map.has(day)) map.set(day, []);
       map.get(day)!.push(c);
     }
+    for (const arr of map.values()) arr.sort((a, b) => a.created_at.localeCompare(b.created_at));
     return map;
   }, [calls]);
+
+  type DayItem = { type: 'task'; item: Task } | { type: 'call'; item: Call };
+  const dayItemsByDay = useMemo(() => {
+    const map = new Map<string, DayItem[]>();
+    for (const t of filteredTasks) {
+      if (!t.due_date) continue;
+      if (!map.has(t.due_date)) map.set(t.due_date, []);
+      map.get(t.due_date)!.push({ type: 'task', item: t });
+    }
+    for (const c of calls) {
+      const day = c.created_at.slice(0, 10);
+      if (!map.has(day)) map.set(day, []);
+      map.get(day)!.push({ type: 'call', item: c });
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const ta = a.type === 'task' ? (a.item.due_time ?? '99:99') : new Date(a.item.created_at).toTimeString().slice(0, 5);
+        const tb = b.type === 'task' ? (b.item.due_time ?? '99:99') : new Date(b.item.created_at).toTimeString().slice(0, 5);
+        return ta.localeCompare(tb);
+      });
+    }
+    return map;
+  }, [filteredTasks, calls]);
 
   const noDueDateTasks = useMemo(() => {
     const fromFetched = noDueDateTasksRaw.filter(t => {
@@ -350,6 +374,29 @@ export default function Tasks() {
 
   return (
     <div className="p-6 space-y-5">
+      {showOverdue && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowOverdue(false)} />
+          <div className="relative z-10 w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-2xl border border-orange-500/20 bg-secondary-background shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-secondary-background px-6 py-4 border-b border-border/10">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-orange-400" />
+                <h2 className="text-sm font-semibold text-text-primary">Ληξιπρόθεσμες εργασίες</h2>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-500">{overdueTasks.length}</span>
+              </div>
+              <button onClick={() => setShowOverdue(false)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 text-text-secondary cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-2">
+              {overdueTasks.map(task => (
+                <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
+                  onToggle={toggle} onEdit={t => { setEditingTask(t); setShowOverdue(false); }} onDelete={doDeleteTask} onNavigate={navigate} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="animate-fade-in-up flex items-center justify-between gap-4">
         <div>
@@ -387,6 +434,15 @@ export default function Tasks() {
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
             Google Calendar
           </button>
+          {overdueTasks.length > 0 && (
+            <button
+              onClick={() => setShowOverdue(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-orange-500/30 bg-orange-500/10 text-sm font-semibold text-orange-400 hover:bg-orange-500/20 transition-all cursor-pointer"
+            >
+              <AlertCircle className="h-4 w-4" />
+              Ληξιπρόθεσμες ({overdueTasks.length})
+            </button>
+          )}
           <button
             onClick={() => { setShowCreate(true); setEditingTask(null); }}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
@@ -565,7 +621,7 @@ export default function Tasks() {
         </div>
       ) : (
         <div className="animate-fade-in-up stagger-2 space-y-5">
-          <div className="grid grid-cols-1 xl:grid-cols-[3fr_1fr] gap-5 items-start">
+        <div>
           <div className="min-w-0 rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -619,54 +675,77 @@ export default function Tasks() {
                 {cells.map((day, i) => {
                   if (!day) return <div key={`empty-${i}`} />;
                   const ds = dayStr(day);
-                  const dayTasks = tasksByDay.get(ds) ?? [];
-                  const dayCalls = callsByDay.get(ds) ?? [];
                   const isToday = ds === todayStr;
                   const isSelected = ds === selectedDay;
                   return (
                     <button key={ds} onClick={() => setSelectedDay(isSelected ? null : ds)}
-                      className={['relative min-h-24 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1 overflow-visible',
+                      className={['relative min-h-32 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1 overflow-visible',
                         isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
                         isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}>
                       <span className={['text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full shrink-0',
                         isToday ? 'bg-primary text-white' : 'text-text-secondary'].join(' ')}>{day}</span>
-                      <div className="flex flex-col gap-0.5 w-full">
-                        {!showOnlyCalls && dayTasks.map(task => {
-                          const done = task.status === 'done';
-                          const color = taskDueColor(task.due_date, todayStr, task.status);
-                          return (
-                            <div key={task.id} className="relative group/chip w-full">
-                              <span
-                                onClick={e => { e.stopPropagation(); navigate(`/tasks/${task.id}`); }}
-                                className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full block cursor-pointer hover:brightness-125 transition-all',
-                                  done ? 'bg-green-500/10 text-green-400 opacity-60' :
-                                  color ? DUE_COLOR_CHIP[color] :
-                                  task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
-                                {(task.case_code || task.category)
-                                  ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
-                                  : task.title}
-                              </span>
-                              <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/chip:block w-72 rounded-xl border border-border/20 bg-secondary-background shadow-2xl p-3 space-y-2 pointer-events-none">
-                                <p className="text-sm font-semibold text-text-primary leading-snug">{task.title}</p>
-                                {task.case_code && <p className="text-xs text-primary font-mono">{task.case_code}{task.case_title ? ` — ${task.case_title}` : ''}</p>}
-                                {task.description && <p className="text-xs text-text-secondary leading-relaxed border-t border-border/10 pt-2">{task.description}</p>}
-                                <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border/10 pt-2">
-                                  {task.category && <span className="text-xs text-text-secondary">{TASK_CATEGORIES[task.category]}</span>}
-                                  {task.due_date && <span className="text-xs text-text-secondary">{new Date(task.due_date + 'T00:00:00').toLocaleDateString('el-GR')}{task.due_time ? ` ${task.due_time}` : ''}</span>}
-                                  <span className={`text-xs font-semibold ${done ? 'text-green-400' : color === 'red' ? 'text-red-400' : color === 'purple' ? 'text-purple-400' : color === 'orange' ? 'text-orange-400' : color === 'yellow' ? 'text-yellow-400' : 'text-text-secondary'}`}>
-                                    {done ? 'Ολοκληρωμένη' : color === 'red' ? 'Ληξιπρόθεσμη' : 'Ανοιχτή'}
-                                  </span>
+                      <div className="flex flex-col gap-1 w-full">
+                        {(dayItemsByDay.get(ds) ?? []).filter(entry => showOnlyCalls ? entry.type === 'call' : true).map(entry => {
+                          if (entry.type === 'task') {
+                            const task = entry.item;
+                            const done = task.status === 'done';
+                            const color = taskDueColor(task.due_date, todayStr, task.status);
+                            const label = (task.case_code || task.category)
+                              ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                              : task.title;
+                            return (
+                              <div key={task.id} className="relative group/chip w-full">
+                                <span
+                                  onClick={e => { e.stopPropagation(); navigate(`/tasks/${task.id}`); }}
+                                  className={['text-[14px] leading-snug px-2 py-1.5 rounded-md truncate w-full block cursor-pointer hover:brightness-125 transition-all',
+                                    done ? 'bg-green-500/15 text-green-700 dark:text-green-400 opacity-75' :
+                                    color ? DUE_COLOR_CHIP[color] :
+                                    task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
+                                  {task.due_time && <span className="opacity-70 mr-1">{task.due_time.slice(0, 5)}</span>}{label}
+                                </span>
+                                <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/chip:block w-72 rounded-xl border border-border/20 bg-secondary-background shadow-2xl p-3 space-y-2 pointer-events-none">
+                                  <p className="text-sm font-semibold text-text-primary leading-snug">{task.title}</p>
+                                  {task.case_code && <p className="text-xs text-primary font-mono">{task.case_code}{task.case_title ? ` — ${task.case_title}` : ''}</p>}
+                                  {task.description && <p className="text-xs text-text-secondary leading-relaxed border-t border-border/10 pt-2">{task.description}</p>}
+                                  <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border/10 pt-2">
+                                    {task.category && <span className="text-xs text-text-secondary">{TASK_CATEGORIES[task.category]}</span>}
+                                    {task.due_date && <span className="text-xs text-text-secondary">{new Date(task.due_date + 'T00:00:00').toLocaleDateString('el-GR')}{task.due_time ? ` ${task.due_time}` : ''}</span>}
+                                    <span className={`text-xs font-semibold ${done ? 'text-green-400' : color === 'red' ? 'text-red-400' : color === 'purple' ? 'text-purple-400' : color === 'orange' ? 'text-orange-400' : color === 'yellow' ? 'text-yellow-400' : 'text-text-secondary'}`}>
+                                      {done ? 'Ολοκληρωμένη' : color === 'red' ? 'Ληξιπρόθεσμη' : 'Ανοιχτή'}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
+                            );
+                          } else {
+                            const call = entry.item;
+                            const callTime = new Date(call.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+                            const dirLabel = call.direction === 'phone' ? 'Τηλ' : call.direction === 'inperson' ? 'Αυτοπρ' : 'Email';
+                            const chipText = call.case_code
+                              ? `${call.case_code} · ${dirLabel}`
+                              : `${dirLabel} · ${call.caller_name ?? call.phone ?? 'Άγνωστος'}`;
+                            return (
+                              <div key={call.id} className="relative group/callchip w-full">
+                                <span
+                                  onClick={e => { e.stopPropagation(); navigate(`/calls/${call.id}`); }}
+                                  className={['text-[14px] leading-snug px-2 py-1.5 rounded-md truncate w-full block cursor-pointer hover:brightness-125 transition-all',
+                                    call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
+                                  <span className="opacity-70 mr-1">{callTime}</span>{chipText}
+                                </span>
+                                <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/callchip:block w-72 rounded-xl border border-border/20 bg-secondary-background shadow-2xl p-3 space-y-2 pointer-events-none">
+                                  <p className="text-sm font-semibold text-text-primary leading-snug">{call.caller_name ?? call.phone ?? 'Άγνωστος'}</p>
+                                  {call.phone && call.caller_name && <p className="text-xs text-text-secondary">{call.phone}</p>}
+                                  {call.case_code && <p className="text-xs text-primary font-mono">{call.case_code}{call.case_title ? ` — ${call.case_title}` : ''}</p>}
+                                  {call.description && <p className="text-xs text-text-secondary leading-relaxed border-t border-border/10 pt-2 line-clamp-3">{call.description}</p>}
+                                  <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border/10 pt-2">
+                                    <span className="text-xs text-text-secondary">{call.direction === 'phone' ? 'Τηλέφωνο' : call.direction === 'inperson' ? 'Αυτοπρόσωπα' : 'Email'}</span>
+                                    <span className="text-xs text-text-secondary">{callTime}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
                         })}
-                        {dayCalls.map(call => (
-                          <span key={call.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full',
-                            call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
-                            {call.caller_name ?? call.phone ?? 'Γεγονός'}
-                          </span>
-                        ))}
                       </div>
                     </button>
                   );
@@ -704,8 +783,6 @@ export default function Tasks() {
               <div className="grid grid-cols-7 gap-1">
                 {weekDays.map(ds => {
                   const d = new Date(ds + 'T00:00:00');
-                  const dayTasks = tasksByDay.get(ds) ?? [];
-                  const dayCalls = callsByDay.get(ds) ?? [];
                   const isToday = ds === todayStr;
                   const isSelected = ds === anchor;
                   return (
@@ -718,27 +795,42 @@ export default function Tasks() {
                         <span className={['text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full',
                           isToday ? 'bg-primary text-white' : 'text-text-primary'].join(' ')}>{d.getDate()}</span>
                       </div>
-                      <div className="flex flex-col gap-0.5 overflow-hidden">
-                        {!showOnlyCalls && dayTasks.map(task => {
-                          const done = task.status === 'done';
-                          const color = taskDueColor(task.due_date, todayStr, task.status);
-                          return (
-                            <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block',
-                              done ? 'bg-green-500/10 text-green-400 opacity-60' :
-                              color ? DUE_COLOR_CHIP[color] :
-                              task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
-                              {(task.case_code || task.category)
-                                ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
-                                : task.title}
-                            </span>
-                          );
+                      <div className="flex flex-col gap-1 overflow-hidden">
+                        {(dayItemsByDay.get(ds) ?? []).filter(entry => showOnlyCalls ? entry.type === 'call' : true).map(entry => {
+                          if (entry.type === 'task') {
+                            const task = entry.item;
+                            const done = task.status === 'done';
+                            const color = taskDueColor(task.due_date, todayStr, task.status);
+                            const label = (task.case_code || task.category)
+                              ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                              : task.title;
+                            return (
+                              <span key={task.id}
+                                onClick={e => { e.stopPropagation(); navigate(`/tasks/${task.id}`); }}
+                                className={['text-[11px] leading-snug px-2 py-1.5 rounded-md truncate block cursor-pointer hover:brightness-125 transition-all',
+                                  done ? 'bg-green-500/15 text-green-700 dark:text-green-400 opacity-75' :
+                                  color ? DUE_COLOR_CHIP[color] :
+                                  task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
+                                {task.due_time && <span className="opacity-70 mr-1">{task.due_time.slice(0, 5)}</span>}{label}
+                              </span>
+                            );
+                          } else {
+                            const call = entry.item;
+                            const callTime = new Date(call.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+                            const dirLabel = call.direction === 'phone' ? 'Τηλ' : call.direction === 'inperson' ? 'Αυτοπρ' : 'Email';
+                            const chipText = call.case_code
+                              ? `${call.case_code} · ${dirLabel}`
+                              : `${dirLabel} · ${call.caller_name ?? call.phone ?? 'Άγνωστος'}`;
+                            return (
+                              <span key={call.id}
+                                onClick={e => { e.stopPropagation(); navigate(`/calls/${call.id}`); }}
+                                className={['text-[11px] leading-snug px-2 py-1.5 rounded-md truncate block cursor-pointer hover:brightness-125 transition-all',
+                                  call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
+                                <span className="opacity-70 mr-1">{callTime}</span>{chipText}
+                              </span>
+                            );
+                          }
                         })}
-                        {dayCalls.map(call => (
-                          <span key={call.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block',
-                            call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
-                            {call.caller_name ?? call.phone ?? 'Γεγονός'}
-                          </span>
-                        ))}
                       </div>
                     </div>
                   );
@@ -783,57 +875,7 @@ export default function Tasks() {
               </div>
             )}
           </div>
-
-          {/* Overdue widget */}
-          <div className="min-w-0 rounded-xl border border-orange-500/20 bg-orange-500/5 p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0">
-                <AlertCircle className="h-4 w-4" />
-              </div>
-              <h2 className="text-sm font-semibold text-text-primary">Ληξιπρόθεσμες εργασίες</h2>
-              {overdueTasks.length > 0 && (
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-500">{overdueTasks.length}</span>
-              )}
-            </div>
-            {overdueTasks.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-6 text-text-secondary">
-                <AlertCircle className="h-8 w-8 opacity-20" />
-                <p className="text-sm">Δεν υπάρχουν ληξιπρόθεσμες εργασίες.</p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  {overdueTasks.slice(overduePage * OVERDUE_PAGE_SIZE, (overduePage + 1) * OVERDUE_PAGE_SIZE).map(task => (
-                    <TaskRow key={task.id} task={task} todayStr={todayStr} toggling={toggling}
-                      onToggle={toggle} onEdit={setEditingTask} onDelete={doDeleteTask} onNavigate={navigate} />
-                  ))}
-                </div>
-                {Math.ceil(overdueTasks.length / OVERDUE_PAGE_SIZE) > 1 && (
-                  <div className="flex items-center justify-between pt-2 border-t border-border/10 mt-2">
-                    <button
-                      onClick={() => setOverduePage(p => p - 1)}
-                      disabled={overduePage === 0}
-                      className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-border/5 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <span className="text-xs text-text-secondary">
-                      {overduePage + 1} / {Math.ceil(overdueTasks.length / OVERDUE_PAGE_SIZE)}
-                    </span>
-                    <button
-                      onClick={() => setOverduePage(p => p + 1)}
-                      disabled={overduePage >= Math.ceil(overdueTasks.length / OVERDUE_PAGE_SIZE) - 1}
-                      className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-border/5 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          </div>{/* end grid */}
+        </div>
 
           {noDueDateTasks.length > 0 && (
             <div className="rounded-xl border border-orange-500/15 bg-orange-500/5 p-5 space-y-3">
@@ -962,7 +1004,7 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavig
   const hasFinancials = task.fee != null || (task.expenses?.length ?? 0) > 0;
 
   return (
-    <div className={`rounded-xl border px-4 py-3 space-y-2 ${color ? DUE_COLOR_CARD[color] : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
+    <div className={`rounded-xl border px-4 py-3 space-y-2 ${color ? DUE_COLOR_CARD[color] : done ? 'border-green-600/20 bg-green-500/8 opacity-80' : 'border-border/10 bg-white/2'}`}>
       <div className="flex items-start gap-3">
         <button
           onClick={() => onToggle(task)}

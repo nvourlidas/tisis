@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Phone, Users, Search, AlertCircle } from 'lucide-react';
+import { X, Phone, Users, Mail, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../../auth';
 import { updateCall, searchCasesForCall } from '../callUtils';
 import type { Call } from '../types';
@@ -15,12 +15,13 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
   const { profile } = useAuth();
   const tenantId = profile?.tenant_id ?? '';
 
-  const [direction, setDirection] = useState<'phone' | 'inperson'>('phone');
+  const [direction, setDirection] = useState<'phone' | 'inperson' | 'email'>('phone');
   const [createdAt, setCreatedAt] = useState('');
   const [phone, setPhone] = useState('');
   const [callerName, setCallerName] = useState('');
   const [description, setDescription] = useState('');
   const [followUp, setFollowUp] = useState(false);
+  const [followUpNotes, setFollowUpNotes] = useState('');
   const [caseId, setCaseId] = useState<string | null>(null);
   const [caseDisplay, setCaseDisplay] = useState<{ code: string; title: string } | null>(null);
 
@@ -43,6 +44,7 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
       setCallerName(call.caller_name ?? '');
       setDescription(call.description ?? '');
       setFollowUp(call.follow_up_required);
+      setFollowUpNotes(call.follow_up_notes ?? '');
       setCaseId(call.case_id);
       setCaseDisplay(call.case_code ? { code: call.case_code, title: call.case_title ?? '' } : null);
       setShowCaseSearch(false);
@@ -88,6 +90,7 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
         caller_name: callerName || undefined,
         description,
         follow_up_required: followUp,
+        follow_up_notes: followUpNotes || undefined,
         case_id: caseId,
         created_at: new Date(createdAt).toISOString(),
       });
@@ -115,21 +118,21 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Direction */}
           <div className="flex gap-2">
-            {(['phone', 'inperson'] as const).map((d) => (
+            {([
+              { key: 'phone', label: 'Τηλεφώνημα', icon: <Phone className="h-4 w-4" />, active: 'border-green-500/30 bg-green-500/10 text-green-400' },
+              { key: 'inperson', label: 'Δια ζώσης', icon: <Users className="h-4 w-4" />, active: 'border-blue-500/30 bg-blue-500/10 text-blue-400' },
+              { key: 'email', label: 'Email', icon: <Mail className="h-4 w-4" />, active: 'border-purple-500/30 bg-purple-500/10 text-purple-400' },
+            ] as const).map((d) => (
               <button
-                key={d}
+                key={d.key}
                 type="button"
-                onClick={() => setDirection(d)}
+                onClick={() => setDirection(d.key)}
                 className={[
                   'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all cursor-pointer',
-                  direction === d
-                    ? d === 'phone'
-                      ? 'border-green-500/30 bg-green-500/10 text-green-400'
-                      : 'border-blue-500/30 bg-blue-500/10 text-blue-400'
-                    : 'border-border/10 bg-white/3 text-text-secondary hover:bg-white/5',
+                  direction === d.key ? d.active : 'border-border/10 bg-white/3 text-text-secondary hover:bg-white/5',
                 ].join(' ')}
               >
-                {d === 'phone' ? <><Phone className="h-4 w-4" />Τηλεφώνημα</> : <><Users className="h-4 w-4" />Δια ζώσης</>}
+                {d.icon}{d.label}
               </button>
             ))}
           </div>
@@ -267,7 +270,7 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
           </div>
 
           {/* Follow-up */}
-          <div className="rounded-xl border border-border/10 bg-white/2 px-4 py-3">
+          <div className="rounded-xl border border-border/10 bg-white/2 px-4 py-3 space-y-3">
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
@@ -277,6 +280,17 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
               />
               <span className="text-sm text-text-secondary">Απαιτείται follow-up</span>
             </label>
+            {followUp && (
+              <div className="pl-6">
+                <textarea
+                  className="input w-full resize-none"
+                  rows={2}
+                  placeholder="Εξέλιξη / σημειώσεις follow-up…"
+                  value={followUpNotes}
+                  onChange={(e) => setFollowUpNotes(e.target.value)}
+                />
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-danger">{error}</p>}

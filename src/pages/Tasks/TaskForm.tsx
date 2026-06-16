@@ -334,10 +334,6 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
                 <label className="block text-xs text-text-secondary mb-1">Ημερομηνία</label>
                 <input type="date" className="input w-full text-sm" value={legalAct.decision?.date ?? ''} onChange={setDecision('date')} />
               </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs text-text-secondary mb-1">Περιγραφή</label>
-                <textarea className="input w-full resize-none text-sm" rows={2} value={legalAct.decision?.description ?? ''} onChange={setDecision('description')} />
-              </div>
             </div>
           </div>
         )}

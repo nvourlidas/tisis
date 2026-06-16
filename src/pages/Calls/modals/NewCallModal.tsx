@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Phone, Users, Search, UserCheck, UserPlus, CheckSquare, Pencil, Briefcase, Unlink } from 'lucide-react';
+import { X, Phone, Users, Mail, Search, UserCheck, UserPlus, CheckSquare, Pencil, Briefcase, Unlink } from 'lucide-react';
 import { useAuth } from '../../../auth';
 import { createCall, searchContactsForCall, searchCasesForCall } from '../callUtils';
 import { createContact } from '../../Contacts/contactUtils';
@@ -35,6 +35,7 @@ const empty = (): CallFormData => ({
   contact_id: '',
   description: '',
   follow_up_required: false,
+  follow_up_notes: '',
   no_case_intentional: false,
   create_task: false,
   task_title: '',
@@ -243,23 +244,21 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Direction toggle + date/time */}
           <div className="flex gap-2">
-            {(['phone', 'inperson'] as const).map((d) => (
+            {([
+              { key: 'phone', label: 'Τηλεφώνημα', icon: <Phone className="h-4 w-4" />, active: 'border-green-500/30 bg-green-500/10 text-green-400' },
+              { key: 'inperson', label: 'Δια ζώσης', icon: <Users className="h-4 w-4" />, active: 'border-blue-500/30 bg-blue-500/10 text-blue-400' },
+              { key: 'email', label: 'Email', icon: <Mail className="h-4 w-4" />, active: 'border-purple-500/30 bg-purple-500/10 text-purple-400' },
+            ] as const).map((d) => (
               <button
-                key={d}
+                key={d.key}
                 type="button"
-                onClick={() => set('direction', d)}
+                onClick={() => set('direction', d.key)}
                 className={[
                   'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all cursor-pointer',
-                  form.direction === d
-                    ? d === 'phone'
-                      ? 'border-green-500/30 bg-green-500/10 text-green-400'
-                      : 'border-blue-500/30 bg-blue-500/10 text-blue-400'
-                    : 'border-border/10 bg-white/3 text-text-secondary hover:bg-white/5',
+                  form.direction === d.key ? d.active : 'border-border/10 bg-white/3 text-text-secondary hover:bg-white/5',
                 ].join(' ')}
               >
-                {d === 'phone'
-                  ? <><Phone className="h-4 w-4" />Τηλεφώνημα</>
-                  : <><Users className="h-4 w-4" />Δια ζώσης</>}
+                {d.icon}{d.label}
               </button>
             ))}
           </div>
@@ -481,6 +480,17 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
               />
               <span className="text-sm text-text-secondary">Απαιτείται follow-up</span>
             </label>
+            {form.follow_up_required && (
+              <div className="pl-6">
+                <textarea
+                  className="input w-full resize-none"
+                  rows={2}
+                  placeholder="Εξέλιξη / σημειώσεις follow-up…"
+                  value={form.follow_up_notes}
+                  onChange={(e) => set('follow_up_notes', e.target.value)}
+                />
+              </div>
+            )}
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input
                 type="checkbox"

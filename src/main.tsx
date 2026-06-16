@@ -18,6 +18,7 @@ import CaseDetail from './pages/Cases/CaseDetail';
 import Contacts from './pages/Contacts/Contacts';
 import ContactDetail from './pages/Contacts/ContactDetail';
 import Calls from './pages/Calls/Calls';
+import CallDetail from './pages/Calls/CallDetail';
 import Tasks from './pages/Tasks/Tasks';
 import TaskDetail from './pages/Tasks/TaskDetail';
 import Finances from './pages/Finances/Finances';
@@ -46,6 +47,7 @@ const router = createBrowserRouter([
       { path: 'contacts', element: <Contacts /> },
       { path: 'contacts/:id', element: <ContactDetail /> },
       { path: 'calls', element: <Calls /> },
+      { path: 'calls/:id', element: <CallDetail /> },
       { path: 'tasks', element: <Tasks /> },
       { path: 'tasks/:id', element: <TaskDetail /> },
       { path: 'finances', element: <Finances /> },

@@ -8,7 +8,7 @@ import { useAuth } from '../../auth';
 import { formatDate } from '../../lib/dateUtils';
 import {
   fetchTask, fetchLinkedTasks, completeTask, reopenTask, updateTask, updateTaskHours,
-  addTaskLink, removeTaskLink, searchFullTasks,
+  addTaskLink, removeTaskLink, searchFullTasks, createTask,
   fetchCategoryRates, calcTaskAmount,
   TASK_CATEGORIES,
   type Task, type LinkedTask, type LegalActData, type AppointmentData, type CourtData, type TaskCategory, type CategoryRate,
@@ -32,6 +32,9 @@ export default function TaskDetail() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const [showLinkModal, setShowLinkModal] = useState(false);
+  const [showCreateLinked, setShowCreateLinked] = useState(false);
+  const [creatingLinked, setCreatingLinked] = useState(false);
+  const [createLinkedError, setCreateLinkedError] = useState<string | null>(null);
   const [editingHours, setEditingHours] = useState(false);
   const [hoursInput, setHoursInput] = useState('');
   const [savingHours, setSavingHours] = useState(false);
@@ -42,6 +45,31 @@ export default function TaskDetail() {
     setShowLinkModal(false);
     const links = await fetchLinkedTasks(id);
     setLinkedTasks(links);
+  };
+
+  const handleCreateLinked = async (values: TaskFormValues) => {
+    if (!id) return;
+    setCreatingLinked(true);
+    setCreateLinkedError(null);
+    try {
+      const newTask = await createTask(tenantId, {
+        title: values.title,
+        description: values.description,
+        due_date: values.due_date,
+        due_time: values.due_time || undefined,
+        case_id: values.case_id || '',
+        category: values.category || undefined,
+        extra_data: values.extra_data,
+      });
+      await addTaskLink(tenantId, id, newTask.id);
+      setShowCreateLinked(false);
+      const links = await fetchLinkedTasks(id);
+      setLinkedTasks(links);
+    } catch (e: any) {
+      setCreateLinkedError(e?.message ?? 'Αποτυχία δημιουργίας εργασίας.');
+    } finally {
+      setCreatingLinked(false);
+    }
   };
 
   const handleRemoveLink = async (linkedTaskId: string) => {
@@ -334,13 +362,22 @@ export default function TaskDetail() {
             <Link2 className="h-4 w-4" />
             Συνδεδεμένες Εργασίες
           </h2>
-          <button
-            onClick={() => setShowLinkModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Σύνδεση
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowCreateLinked(true); setCreateLinkedError(null); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Νέα
+            </button>
+            <button
+              onClick={() => setShowLinkModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Σύνδεση
+            </button>
+          </div>
         </div>
 
         {linkedTasks.length === 0 ? (
@@ -363,6 +400,33 @@ export default function TaskDetail() {
           onSelect={handleAddLink}
           onClose={() => setShowLinkModal(false)}
         />
+      )}
+
+      {/* Create linked task modal */}
+      {showCreateLinked && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowCreateLinked(false); setCreateLinkedError(null); }} />
+          <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border/20 bg-secondary-background shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-secondary-background px-6 py-4 border-b border-border/10">
+              <h2 className="text-sm font-semibold text-text-primary">Νέα Συνδεδεμένη Εργασία</h2>
+              <button onClick={() => { setShowCreateLinked(false); setCreateLinkedError(null); }} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 text-text-secondary cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-6">
+              <TaskForm
+                tenantId={tenantId}
+                initial={{ case_id: task.case_id ?? '', case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined, due_date: new Date().toISOString().slice(0, 10) }}
+                saving={creatingLinked}
+                error={createLinkedError}
+                onSubmit={handleCreateLinked}
+                onCancel={() => { setShowCreateLinked(false); setCreateLinkedError(null); }}
+                submitLabel="Δημιουργία"
+                hideLinkedTasks
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Edit modal */}

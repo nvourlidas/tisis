@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Upload, Trash2, ExternalLink, FileText, FolderOpen, FolderPlus, Loader2, RefreshCw, ChevronRight, Check, X } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, FileText, FolderOpen, FolderPlus, FolderUp, Loader2, RefreshCw, ChevronRight, Check, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 interface DriveFile {
@@ -50,11 +50,27 @@ async function callDriveSync(body: Record<string, unknown>) {
   return res.json();
 }
 
+async function uploadFileToDrive(file: File, folderId: string, caseId: string, accessToken: string) {
+  const form = new FormData();
+  form.append('action', 'upload-file');
+  form.append('case_id', caseId);
+  form.append('folder_id', folderId);
+  form.append('file', new File([file], file.name, { type: file.type }));
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-drive-sync`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+  });
+  return res.json();
+}
+
 export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folderUrl, onFolderCreated }: Props) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [folderUploadProgress, setFolderUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [noToken, setNoToken] = useState(false);
   const [breadcrumbs, setBreadcrumbs] = useState<FolderCrumb[]>([]);
@@ -62,10 +78,12 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
   const [subfolderName, setSubfolderName] = useState('');
   const [creatingSubfolder, setCreatingSubfolder] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const subfolderInputRef = useRef<HTMLInputElement>(null);
 
   const currentFolderId = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].id : folderId;
   const currentFolderUrl = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].url : folderUrl;
+  const confirmDeleteFile = files.find((f) => f.id === confirmDeleteId);
 
   useEffect(() => {
     if (!folderId) return;
@@ -108,17 +126,7 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
     setUploading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const form = new FormData();
-      form.append('action', 'upload-file');
-      form.append('case_id', caseId);
-      form.append('folder_id', currentFolderId);
-      form.append('file', file);
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-drive-sync`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-        body: form,
-      });
-      const data = await res.json();
+      const data = await uploadFileToDrive(file, currentFolderId, caseId, session?.access_token ?? '');
       if (data.ok) setFiles((prev) => [data.file, ...prev]);
     } finally {
       setUploading(false);
@@ -126,8 +134,39 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
     }
   }
 
-  async function handleDelete(fileId: string) {
-    if (!confirm('Διαγραφή αρχείου από το Google Drive;')) return;
+  async function handleFolderSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const allFiles = Array.from(e.target.files ?? []);
+    if (allFiles.length === 0 || !currentFolderId) return;
+    const firstPath = (allFiles[0] as File & { webkitRelativePath: string }).webkitRelativePath;
+    const folderName = firstPath.split('/')[0];
+    if (folderInputRef.current) folderInputRef.current.value = '';
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token ?? '';
+
+    const folderData = await callDriveSync({ action: 'create-subfolder', folderId: currentFolderId, folderName });
+    if (!folderData.ok || !folderData.folder?.id) return;
+    const targetFolderId = folderData.folder.id;
+
+    setFolderUploadProgress({ done: 0, total: allFiles.length });
+
+    const BATCH = 5;
+    let done = 0;
+    for (let i = 0; i < allFiles.length; i += BATCH) {
+      const batch = allFiles.slice(i, i + BATCH);
+      await Promise.all(batch.map((file: File) => uploadFileToDrive(file, targetFolderId, caseId, accessToken)));
+      done += batch.length;
+      setFolderUploadProgress({ done, total: allFiles.length });
+    }
+
+    setFolderUploadProgress(null);
+    loadFiles();
+  }
+
+  async function confirmDelete() {
+    if (!confirmDeleteId) return;
+    const fileId = confirmDeleteId;
+    setConfirmDeleteId(null);
     setDeletingId(fileId);
     try {
       await callDriveSync({ action: 'delete-file', fileId });
@@ -199,6 +238,58 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
 
   return (
     <div className="space-y-3">
+      {/* Delete confirmation modal */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-surface rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <h3 className="text-base font-semibold text-text-primary">Διαγραφή αρχείου</h3>
+            <p className="text-sm text-text-secondary">
+              Είστε σίγουροι ότι θέλετε να διαγράψετε το αρχείο{' '}
+              <span className="font-medium text-text-primary">«{confirmDeleteFile?.name}»</span>{' '}
+              από το Google Drive; Η ενέργεια αυτή δεν αναιρείται.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors cursor-pointer"
+              >
+                Ακύρωση
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 text-sm bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors cursor-pointer"
+              >
+                Διαγραφή
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Folder upload progress bar */}
+      {folderUploadProgress && (
+        <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-medium">
+            <span className="text-primary flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Ανέβασμα αρχείων…
+            </span>
+            <span className="text-primary">
+              {Math.round((folderUploadProgress.done / folderUploadProgress.total) * 100)}%
+              <span className="text-text-secondary font-normal ml-1">
+                ({folderUploadProgress.done}/{folderUploadProgress.total})
+              </span>
+            </span>
+          </div>
+          <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-300"
+              style={{ width: `${(folderUploadProgress.done / folderUploadProgress.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-1 text-sm flex-wrap">
         <button
@@ -245,12 +336,22 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <input ref={inputRef} type="file" className="hidden" onChange={handleUpload} />
+          <input ref={folderInputRef} type="file" className="hidden" onChange={handleFolderSelect}
+            {...{ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>}
+          />
           <button
             onClick={() => { setShowSubfolderInput(true); setTimeout(() => subfolderInputRef.current?.focus(), 50); }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors cursor-pointer"
             title="Νέος υποφάκελος"
           >
             <FolderPlus className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => folderInputRef.current?.click()}
+            disabled={!!folderUploadProgress}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <FolderUp className="h-4 w-4" />Φάκελος
           </button>
           <button
             onClick={() => inputRef.current?.click()}
@@ -332,7 +433,7 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
                 </a>
                 {!isFolder(file) && (
                   <button
-                    onClick={() => handleDelete(file.id)}
+                    onClick={() => setConfirmDeleteId(file.id)}
                     disabled={deletingId === file.id}
                     className="p-1.5 text-text-secondary hover:text-red-400 rounded transition-colors disabled:opacity-50 cursor-pointer"
                     title="Διαγραφή"

@@ -343,17 +343,31 @@ export async function searchTasks(tenantId: string, query: string, excludeId?: s
 }
 
 export async function fetchLinkedTasks(taskId: string): Promise<LinkedTask[]> {
-  const { data } = await supabase
-    .from('task_links')
-    .select('linked_task:tasks!task_links_linked_task_id_fkey(id, title, due_date, status, category)')
-    .eq('task_id', taskId);
-  return (data ?? []).map((r: any) => ({
-    id: r.linked_task.id,
-    title: r.linked_task.title,
-    due_date: r.linked_task.due_date ? r.linked_task.due_date.slice(0, 10) : null,
-    status: r.linked_task.status,
-    category: r.linked_task.category ?? null,
-  }));
+  const [fwd, rev] = await Promise.all([
+    supabase
+      .from('task_links')
+      .select('linked_task:tasks!task_links_linked_task_id_fkey(id, title, due_date, status, category)')
+      .eq('task_id', taskId),
+    supabase
+      .from('task_links')
+      .select('task:tasks!task_links_task_id_fkey(id, title, due_date, status, category)')
+      .eq('linked_task_id', taskId),
+  ]);
+  const seen = new Set<string>();
+  const toLinkedTask = (r: any, key: string): LinkedTask => {
+    const t = r[key];
+    return { id: t.id, title: t.title, due_date: t.due_date ? t.due_date.slice(0, 10) : null, status: t.status, category: t.category ?? null };
+  };
+  const results: LinkedTask[] = [];
+  for (const r of fwd.data ?? []) {
+    const lt = toLinkedTask(r, 'linked_task');
+    if (!seen.has(lt.id)) { seen.add(lt.id); results.push(lt); }
+  }
+  for (const r of rev.data ?? []) {
+    const lt = toLinkedTask(r, 'task');
+    if (!seen.has(lt.id)) { seen.add(lt.id); results.push(lt); }
+  }
+  return results;
 }
 
 export async function createTask(_tenantId: string, form: {
@@ -394,12 +408,12 @@ export async function addTaskLink(tenantId: string, taskId: string, linkedTaskId
 }
 
 export async function removeTaskLink(taskId: string, linkedTaskId: string): Promise<void> {
-  const { error } = await supabase
-    .from('task_links')
-    .delete()
-    .eq('task_id', taskId)
-    .eq('linked_task_id', linkedTaskId);
-  if (error) throw error;
+  const [r1, r2] = await Promise.all([
+    supabase.from('task_links').delete().eq('task_id', taskId).eq('linked_task_id', linkedTaskId),
+    supabase.from('task_links').delete().eq('task_id', linkedTaskId).eq('linked_task_id', taskId),
+  ]);
+  if (r1.error) throw r1.error;
+  if (r2.error) throw r2.error;
 }
 
 export async function fetchTaskPayments(taskId: string): Promise<TaskPayment[]> {

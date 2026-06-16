@@ -1,4 +1,4 @@
-export type CallDirection = 'phone' | 'inperson';
+export type CallDirection = 'phone' | 'inperson' | 'email';
 
 export type Call = {
   id: string;
@@ -11,6 +11,7 @@ export type Call = {
   contact_id: string | null;
   description: string | null;
   follow_up_required: boolean;
+  follow_up_notes: string | null;
   no_case_intentional: boolean;
   created_at: string;
   // joined
@@ -26,6 +27,7 @@ export type CallFormData = {
   contact_id: string;
   description: string;
   follow_up_required: boolean;
+  follow_up_notes: string;
   no_case_intentional: boolean;
   create_task: boolean;
   task_title: string;
