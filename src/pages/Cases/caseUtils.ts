@@ -1,9 +1,9 @@
 import { supabase } from '../../lib/supabase';
 import type { Case, CaseFormData, CaseContact, CaseCall, CaseTask, CaseFee, CaseExpense, CaseStatus, CaseStage } from './types';
 
-const CASE_SELECT = '*, clients(name), case_stages(name)';
+const CASE_SELECT = '*, clients(name, email), case_stages(name)';
 function mapCase(r: any): Case {
-  return { ...r, client_name: r.clients?.name ?? null, stage_name: r.case_stages?.name ?? null };
+  return { ...r, client_name: r.clients?.name ?? null, client_email: r.clients?.email ?? null, stage_name: r.case_stages?.name ?? null };
 }
 
 export async function fetchCases(tenantId: string, status?: CaseStatus): Promise<Case[]> {

@@ -4,6 +4,7 @@ export type Call = {
   id: string;
   tenant_id: string;
   phone: string | null;
+  email: string | null;
   caller_name: string | null;
   direction: CallDirection;
   case_id: string | null;
@@ -21,6 +22,7 @@ export type Call = {
 
 export type CallFormData = {
   phone: string;
+  email: string;
   caller_name: string;
   direction: CallDirection;
   case_id: string;

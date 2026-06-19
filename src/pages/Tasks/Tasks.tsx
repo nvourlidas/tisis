@@ -86,6 +86,7 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [createInitialDate, setCreateInitialDate] = useState<string>('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -177,7 +178,7 @@ export default function Tasks() {
     try {
       await createTask(tenantId, {
         title: values.title,
-        description: extraDataToDescription(values.category || null, values.extra_data) ?? values.description,
+        description: [extraDataToDescription(values.category || null, values.extra_data), values.description].filter(Boolean).join('\n') || '',
         due_date: values.due_date,
         due_time: values.due_time || undefined,
         case_id: values.case_id,
@@ -203,7 +204,7 @@ export default function Tasks() {
       await updateTask({
         id: editingTask.id,
         title: values.title,
-        description: extraDataToDescription(values.category || null, values.extra_data) ?? values.description,
+        description: [extraDataToDescription(values.category || null, values.extra_data), values.description].filter(Boolean).join('\n') || '',
         due_date: values.due_date,
         due_time: values.due_time || undefined,
         case_id: values.case_id || null,
@@ -314,8 +315,8 @@ export default function Tasks() {
     }
     for (const arr of map.values()) {
       arr.sort((a, b) => {
-        const ta = a.type === 'task' ? (a.item.due_time ?? '99:99') : new Date(a.item.created_at).toTimeString().slice(0, 5);
-        const tb = b.type === 'task' ? (b.item.due_time ?? '99:99') : new Date(b.item.created_at).toTimeString().slice(0, 5);
+        const ta = a.type === 'task' ? (a.item.due_time ?? '99:99') : new Date(a.item.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toTimeString().slice(0, 5);
+        const tb = b.type === 'task' ? (b.item.due_time ?? '99:99') : new Date(b.item.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toTimeString().slice(0, 5);
         return ta.localeCompare(tb);
       });
     }
@@ -444,7 +445,7 @@ export default function Tasks() {
             </button>
           )}
           <button
-            onClick={() => { setShowCreate(true); setEditingTask(null); }}
+            onClick={() => { setCreateInitialDate(''); setShowCreate(true); setEditingTask(null); }}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
           >
             <Plus className="h-4 w-4" />
@@ -463,6 +464,7 @@ export default function Tasks() {
           </div>
           <TaskForm
             tenantId={tenantId}
+            initial={createInitialDate ? { due_date: createInitialDate } : undefined}
             saving={creating}
             error={createError}
             onSubmit={handleCreate}
@@ -587,11 +589,11 @@ export default function Tasks() {
             });
             const filteredCalls = searchCallResults.filter(c => {
               if (searchYear !== null) {
-                const y = new Date(c.created_at).getFullYear();
+                const y = new Date(c.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).getFullYear();
                 if (y !== searchYear) return false;
               }
               if (searchMonth !== null) {
-                const m = new Date(c.created_at).getMonth();
+                const m = new Date(c.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).getMonth();
                 if (m !== searchMonth) return false;
               }
               return true;
@@ -691,7 +693,7 @@ export default function Tasks() {
                             const done = task.status === 'done';
                             const color = taskDueColor(task.due_date, todayStr, task.status);
                             const label = (task.case_code || task.category)
-                              ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                              ? [task.case_code, task.client_name, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
                               : task.title;
                             return (
                               <div key={task.id} className="relative group/chip w-full">
@@ -706,6 +708,7 @@ export default function Tasks() {
                                 <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/chip:block w-72 rounded-xl border border-border/20 bg-secondary-background shadow-2xl p-3 space-y-2 pointer-events-none">
                                   <p className="text-sm font-semibold text-text-primary leading-snug">{task.title}</p>
                                   {task.case_code && <p className="text-xs text-primary font-mono">{task.case_code}{task.case_title ? ` — ${task.case_title}` : ''}</p>}
+                                  {task.client_name && <p className="text-xs text-text-secondary">{task.client_name}</p>}
                                   {task.description && <p className="text-xs text-text-secondary leading-relaxed border-t border-border/10 pt-2">{task.description}</p>}
                                   <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border/10 pt-2">
                                     {task.category && <span className="text-xs text-text-secondary">{TASK_CATEGORIES[task.category]}</span>}
@@ -719,7 +722,7 @@ export default function Tasks() {
                             );
                           } else {
                             const call = entry.item;
-                            const callTime = new Date(call.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+                            const callTime = new Date(call.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
                             const dirLabel = call.direction === 'phone' ? 'Τηλ' : call.direction === 'inperson' ? 'Αυτοπρ' : 'Email';
                             const chipText = call.case_code
                               ? `${call.case_code} · ${dirLabel}`
@@ -757,9 +760,18 @@ export default function Tasks() {
                     <h3 className="text-sm font-semibold text-text-primary">
                       {new Date(selectedDay + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                     </h3>
-                    <button onClick={() => setSelectedDay(null)} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => { setCreateInitialDate(selectedDay!); setShowCreate(true); setEditingTask(null); }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-semibold hover:bg-primary/25 transition-colors cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Νέα Εργασία
+                      </button>
+                      <button onClick={() => setSelectedDay(null)} className="p-1 rounded hover:bg-white/5 text-text-secondary cursor-pointer">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                   {(showOnlyCalls ? [] : selectedTasks).length === 0 && (callsByDay.get(selectedDay!) ?? []).length === 0 ? (
                     <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
@@ -802,7 +814,7 @@ export default function Tasks() {
                             const done = task.status === 'done';
                             const color = taskDueColor(task.due_date, todayStr, task.status);
                             const label = (task.case_code || task.category)
-                              ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                              ? [task.case_code, task.client_name, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
                               : task.title;
                             return (
                               <span key={task.id}
@@ -816,7 +828,7 @@ export default function Tasks() {
                             );
                           } else {
                             const call = entry.item;
-                            const callTime = new Date(call.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+                            const callTime = new Date(call.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
                             const dirLabel = call.direction === 'phone' ? 'Τηλ' : call.direction === 'inperson' ? 'Αυτοπρ' : 'Email';
                             const chipText = call.case_code
                               ? `${call.case_code} · ${dirLabel}`
@@ -837,9 +849,18 @@ export default function Tasks() {
                 })}
               </div>
               <div className="border-t border-border/10 pt-4 space-y-2">
-                <h3 className="text-sm font-semibold text-text-primary">
-                  {new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-text-primary">
+                    {new Date(anchor + 'T00:00:00').toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </h3>
+                  <button
+                    onClick={() => { setCreateInitialDate(anchor); setShowCreate(true); setEditingTask(null); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-semibold hover:bg-primary/25 transition-colors cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Νέα Εργασία
+                  </button>
+                </div>
                 {(showOnlyCalls ? 0 : (tasksByDay.get(anchor) ?? []).length) === 0 && (callsByDay.get(anchor) ?? []).length === 0 ? (
                   <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
                 ) : (
@@ -859,6 +880,15 @@ export default function Tasks() {
             {/* Day view */}
             {view === 'day' && (
               <div className="space-y-2">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => { setCreateInitialDate(anchor); setShowCreate(true); setEditingTask(null); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-semibold hover:bg-primary/25 transition-colors cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Νέα Εργασία
+                  </button>
+                </div>
                 {(showOnlyCalls ? 0 : (tasksByDay.get(anchor) ?? []).length) === 0 && (callsByDay.get(anchor) ?? []).length === 0 ? (
                   <p className="text-sm text-text-secondary py-2">Δεν υπάρχουν εγγραφές αυτή την ημέρα.</p>
                 ) : (

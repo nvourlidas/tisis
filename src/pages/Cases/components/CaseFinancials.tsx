@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Wallet, Euro, RotateCcw, Plus, Trash2, ChevronDown, ChevronRight, X, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Euro, RotateCcw, Plus, Trash2, ChevronDown, ChevronRight, X, Clock, CheckCircle2 } from 'lucide-react';
 import { fetchCaseFees, createCaseFee, deleteCaseFee, createFeePayment, deleteFeePayment, fetchCaseExpenses, createCaseExpense, deleteCaseExpense, fetchCaseTasks, linkTaskToFee } from '../caseUtils';
 import type { CaseFee, FeePayment, CaseExpense, CaseTask } from '../types';
 import { formatDate } from '../../../lib/dateUtils';
-import { fetchCategoryRates, calcTaskAmount } from '../../Tasks/taskUtils';
+import { fetchCategoryRates, calcTaskAmount, TASK_CATEGORIES } from '../../Tasks/taskUtils';
 import { useAuth } from '../../../auth';
 
 type Props = { caseId: string; tenantId: string };
@@ -97,6 +97,8 @@ export default function CaseFinancials({ caseId, tenantId }: Props) {
     </div>
   );
 
+  const tasksWithHours = tasks.filter(t => t.hours != null && t.hours > 0);
+
   return (
     <div className="space-y-5">
       {/* Summary cards */}
@@ -128,252 +130,300 @@ export default function CaseFinancials({ caseId, tenantId }: Props) {
         />
       </div>
 
-      {/* Task hours summary */}
-      {totalTaskHours > 0 && (
-        <div className="flex items-center gap-3 rounded-xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-blue-500/10 text-blue-500 shrink-0">
-            <Clock className="h-5 w-5" />
+      {/* Two-column layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+
+        {/* LEFT — Fees + Expenses */}
+        <div className="space-y-5">
+          {/* Add fee button */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Συμφωνίες Αμοιβής ({fees.length})
+            </h3>
+            <button
+              onClick={() => setShowNewFee(v => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Νέα Συμφωνία
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-text-secondary">Χρεώσιμες Ώρες Εργασιών</p>
-            <p className="text-sm font-semibold text-blue-400 mt-0.5">
-              {totalTaskHours}ω
-              {totalTaskAmount != null && (
-                <span className="ml-2 text-blue-300">· {formatEur(totalTaskAmount)}</span>
-              )}
-            </p>
-          </div>
-          <p className="text-xs text-text-secondary italic shrink-0">Δεν συμπεριλαμβάνεται στα σύνολα</p>
-        </div>
-      )}
 
-      {/* Add fee button */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-          Συμφωνίες Αμοιβής ({fees.length})
-        </h3>
-        <button
-          onClick={() => setShowNewFee(v => !v)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Νέα Συμφωνία
-        </button>
-      </div>
+          {showNewFee && (
+            <NewFeeForm
+              tenantId={tenantId}
+              caseId={caseId}
+              onSaved={() => { setShowNewFee(false); reload(); }}
+              onCancel={() => setShowNewFee(false)}
+            />
+          )}
 
-      {/* New fee form */}
-      {showNewFee && (
-        <NewFeeForm
-          tenantId={tenantId}
-          caseId={caseId}
-          onSaved={() => { setShowNewFee(false); reload(); }}
-          onCancel={() => setShowNewFee(false)}
-        />
-      )}
-
-      {/* Fees list */}
-      {fees.length === 0 && !showNewFee ? (
-        <div className="flex flex-col items-center gap-2 py-10 text-text-secondary">
-          <div className="w-12 h-12 rounded-2xl bg-border/5 flex items-center justify-center">
-            <Wallet className="h-6 w-6 opacity-30" />
-          </div>
-          <p className="text-sm">Δεν υπάρχουν συμφωνίες αμοιβής.</p>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border/10 overflow-hidden divide-y divide-border/10">
-          {fees.map((fee) => {
-            const paid = (fee.payments ?? []).reduce((s, p) => s + p.amount, 0);
-            const remaining = fee.amount - paid;
-            const paidPct = fee.amount > 0 ? Math.min(100, (paid / fee.amount) * 100) : 0;
-            const expanded = expandedFees.has(fee.id);
-            const addingPayment = addingPaymentFor === fee.id;
-            const feeLinkedTasks = tasks.filter(t => t.fee_id === fee.id);
-            const feeHours = feeLinkedTasks.reduce((s, t) => s + (t.hours ?? 0), 0);
-            const feeAmounts = feeLinkedTasks.map(t => calcTaskAmount(t.hours, rates, t.category));
-            const feeTaskAmount = feeAmounts.some(a => a != null)
-              ? feeAmounts.reduce((s, a) => (s ?? 0) + (a ?? 0), 0)
-              : null;
-
-            return (
-              <div key={fee.id} className="bg-secondary-background">
-                {/* Fee header */}
-                <div className="flex items-center gap-3 px-4 py-3 hover:bg-white/2 transition-colors">
-                  <button onClick={() => toggleExpand(fee.id)} className="shrink-0 text-text-secondary cursor-pointer">
-                    {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  </button>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-blue-500">{formatEur(fee.amount)}</span>
-                        {fee.agreement_date && (
-                          <span className="text-xs text-text-secondary">Ημ. Συμφωνίας: {formatDate(fee.agreement_date)}</span>
-                        )}
-                        {feeHours > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-xs">
-                            <Clock className="h-3 w-3" />
-                            {feeHours}ω{feeTaskAmount != null ? ` · ${formatEur(feeTaskAmount)}` : ''}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => setAddingPaymentFor(addingPayment ? null : fee.id)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 cursor-pointer"
-                        >
-                          <Plus className="h-3 w-3" />
-                          Πληρωμή
-                        </button>
-                        <button onClick={() => handleDeleteFee(fee.id)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Progress bar */}
-                    <div className="space-y-0.5">
-                      <div className="h-1.5 rounded-full bg-border/20 overflow-hidden">
-                        <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${paidPct}%` }} />
-                      </div>
-                      <div className="flex gap-3 text-[11px]">
-                        <span className="text-green-500">Πληρωμένο: <strong>{formatEur(paid)}</strong></span>
-                        {remaining > 0 && <span className="text-orange-400">Υπόλοιπο: <strong>{formatEur(remaining)}</strong></span>}
-                        {remaining <= 0 && paid > 0 && <span className="text-green-500 font-semibold">Εξοφλήθηκε</span>}
-                      </div>
-                    </div>
-
-                    {fee.notes && <p className="text-xs text-text-secondary">{fee.notes}</p>}
-                  </div>
-                </div>
-
-                {/* Add payment inline form */}
-                {addingPayment && (
-                  <AddPaymentForm
-                    tenantId={tenantId}
-                    feeId={fee.id}
-                    onSaved={() => { setAddingPaymentFor(null); reload(); }}
-                    onCancel={() => setAddingPaymentFor(null)}
-                  />
-                )}
-
-                {/* Payments list */}
-                {expanded && (fee.payments ?? []).length > 0 && (
-                  <div className="border-t border-border/10 divide-y divide-border/10">
-                    {(fee.payments ?? []).map((p) => (
-                      <PaymentRow key={p.id} payment={p} onDelete={handleDeletePayment} />
-                    ))}
-                  </div>
-                )}
-                {expanded && (fee.payments ?? []).length === 0 && (
-                  <div className="border-t border-border/10 px-4 py-3">
-                    <p className="text-xs text-text-secondary">Δεν υπάρχουν πληρωμές ακόμα.</p>
-                  </div>
-                )}
-
-                {/* Linked tasks */}
-                {expanded && (() => {
-                  const linkedTasks = tasks.filter(t => t.fee_id === fee.id);
-                  const unlinkableTasks = tasks.filter(t => t.fee_id == null);
-                  const showPicker = linkingTaskFor === fee.id;
-                  return (
-                    <div className="border-t border-border/10">
-                      <div className="flex items-center justify-between px-4 py-2">
-                        <span className="text-xs font-medium text-text-secondary">Εργασίες ({linkedTasks.length})</span>
-                        {unlinkableTasks.length > 0 && (
-                          <button
-                            onClick={() => setLinkingTaskFor(showPicker ? null : fee.id)}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 cursor-pointer"
-                          >
-                            <Plus className="h-3 w-3" />
-                            Σύνδεση
-                          </button>
-                        )}
-                      </div>
-                      {linkedTasks.length > 0 && (
-                        <div className="divide-y divide-border/10">
-                          {linkedTasks.map(t => (
-                            <div key={t.id} className="flex items-center gap-3 px-10 py-2 hover:bg-white/2">
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${t.status === 'done' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-400'}`}>
-                                {t.status === 'done' ? '✓' : '○'}
-                              </span>
-                              <span className="flex-1 text-xs text-text-primary truncate">{t.title}</span>
-                              {t.hours != null && <span className="text-xs text-text-secondary">{t.hours}ω</span>}
-                              <button onClick={() => handleUnlinkTask(t.id)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer">
-                                <X className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {showPicker && (
-                        <div className="mx-4 mb-3 rounded-xl border border-blue-500/20 bg-blue-500/5 p-2 space-y-1">
-                          <p className="text-xs text-text-secondary mb-1">Επιλέξτε εργασία:</p>
-                          {unlinkableTasks.map(t => (
-                            <button
-                              key={t.id}
-                              onClick={() => handleLinkTask(t.id, fee.id)}
-                              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/8 text-left cursor-pointer"
-                            >
-                              <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${t.status === 'done' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-400'}`}>
-                                {t.status === 'done' ? '✓' : '○'}
-                              </span>
-                              <span className="text-xs text-text-primary truncate">{t.title}</span>
-                              {t.hours != null && <span className="text-xs text-text-secondary shrink-0">{t.hours}ω</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+          {fees.length === 0 && !showNewFee ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-text-secondary">
+              <div className="w-12 h-12 rounded-2xl bg-border/5 flex items-center justify-center">
+                <Wallet className="h-6 w-6 opacity-30" />
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Expenses section */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-          Έξοδα ({expenses.length})
-        </h3>
-        <button
-          onClick={() => setShowNewExpense(v => !v)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Νέο Έξοδο
-        </button>
-      </div>
-
-      {showNewExpense && (
-        <NewExpenseForm
-          tenantId={tenantId}
-          caseId={caseId}
-          onSaved={() => { setShowNewExpense(false); reload(); }}
-          onCancel={() => setShowNewExpense(false)}
-        />
-      )}
-
-      {expenses.length === 0 && !showNewExpense ? (
-        <div className="flex flex-col items-center gap-2 py-6 text-text-secondary">
-          <p className="text-sm">Δεν υπάρχουν έξοδα.</p>
-        </div>
-      ) : expenses.length > 0 ? (
-        <div className="rounded-xl border border-border/10 overflow-hidden divide-y divide-border/10">
-          {expenses.map((exp) => (
-            <div key={exp.id} className="flex items-center gap-3 px-4 py-3 bg-secondary-background hover:bg-white/2 transition-colors">
-              <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
-                <span className="text-sm font-semibold text-red-500">{formatEur(exp.amount)}</span>
-                {exp.date && <span className="text-xs text-text-secondary">{formatDate(exp.date)}</span>}
-                {exp.notes && <span className="text-xs text-text-secondary truncate">{exp.notes}</span>}
-              </div>
-              <button onClick={() => handleDeleteExpense(exp.id)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer shrink-0">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <p className="text-sm">Δεν υπάρχουν συμφωνίες αμοιβής.</p>
             </div>
-          ))}
+          ) : (
+            <div className="rounded-xl border border-border/10 overflow-hidden divide-y divide-border/10">
+              {fees.map((fee) => {
+                const paid = (fee.payments ?? []).reduce((s, p) => s + p.amount, 0);
+                const remaining = fee.amount - paid;
+                const paidPct = fee.amount > 0 ? Math.min(100, (paid / fee.amount) * 100) : 0;
+                const expanded = expandedFees.has(fee.id);
+                const addingPayment = addingPaymentFor === fee.id;
+                const feeLinkedTasks = tasks.filter(t => t.fee_id === fee.id);
+                const feeHours = feeLinkedTasks.reduce((s, t) => s + (t.hours ?? 0), 0);
+                const feeAmounts = feeLinkedTasks.map(t => calcTaskAmount(t.hours, rates, t.category));
+                const feeTaskAmount = feeAmounts.some(a => a != null)
+                  ? feeAmounts.reduce((s, a) => (s ?? 0) + (a ?? 0), 0)
+                  : null;
+
+                return (
+                  <div key={fee.id} className="bg-secondary-background">
+                    <div className="flex items-center gap-3 px-4 py-3 hover:bg-white/2 transition-colors">
+                      <button onClick={() => toggleExpand(fee.id)} className="shrink-0 text-text-secondary cursor-pointer">
+                        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </button>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-blue-500">{formatEur(fee.amount)}</span>
+                            {fee.agreement_date && (
+                              <span className="text-xs text-text-secondary">Ημ. Συμφωνίας: {formatDate(fee.agreement_date)}</span>
+                            )}
+                            {feeHours > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-xs">
+                                <Clock className="h-3 w-3" />
+                                {feeHours}ω{feeTaskAmount != null ? ` · ${formatEur(feeTaskAmount)}` : ''}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => setAddingPaymentFor(addingPayment ? null : fee.id)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 cursor-pointer"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Πληρωμή
+                            </button>
+                            <button onClick={() => handleDeleteFee(fee.id)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-0.5">
+                          <div className="h-1.5 rounded-full bg-border/20 overflow-hidden">
+                            <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${paidPct}%` }} />
+                          </div>
+                          <div className="flex gap-3 text-[11px]">
+                            <span className="text-green-500">Πληρωμένο: <strong>{formatEur(paid)}</strong></span>
+                            {remaining > 0 && <span className="text-orange-400">Υπόλοιπο: <strong>{formatEur(remaining)}</strong></span>}
+                            {remaining <= 0 && paid > 0 && <span className="text-green-500 font-semibold">Εξοφλήθηκε</span>}
+                          </div>
+                        </div>
+                        {fee.notes && <p className="text-xs text-text-secondary">{fee.notes}</p>}
+                      </div>
+                    </div>
+
+                    {addingPayment && (
+                      <AddPaymentForm
+                        tenantId={tenantId}
+                        feeId={fee.id}
+                        onSaved={() => { setAddingPaymentFor(null); reload(); }}
+                        onCancel={() => setAddingPaymentFor(null)}
+                      />
+                    )}
+
+                    {expanded && (fee.payments ?? []).length > 0 && (
+                      <div className="border-t border-border/10 divide-y divide-border/10">
+                        {(fee.payments ?? []).map((p) => (
+                          <PaymentRow key={p.id} payment={p} onDelete={handleDeletePayment} />
+                        ))}
+                      </div>
+                    )}
+                    {expanded && (fee.payments ?? []).length === 0 && (
+                      <div className="border-t border-border/10 px-4 py-3">
+                        <p className="text-xs text-text-secondary">Δεν υπάρχουν πληρωμές ακόμα.</p>
+                      </div>
+                    )}
+
+                    {expanded && (() => {
+                      const linkedTasks = tasks.filter(t => t.fee_id === fee.id);
+                      const unlinkableTasks = tasks.filter(t => t.fee_id == null);
+                      const showPicker = linkingTaskFor === fee.id;
+                      return (
+                        <div className="border-t border-border/10">
+                          <div className="flex items-center justify-between px-4 py-2">
+                            <span className="text-xs font-medium text-text-secondary">Εργασίες ({linkedTasks.length})</span>
+                            {unlinkableTasks.length > 0 && (
+                              <button
+                                onClick={() => setLinkingTaskFor(showPicker ? null : fee.id)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 cursor-pointer"
+                              >
+                                <Plus className="h-3 w-3" />
+                                Σύνδεση
+                              </button>
+                            )}
+                          </div>
+                          {linkedTasks.length > 0 && (
+                            <div className="divide-y divide-border/10">
+                              {linkedTasks.map(t => (
+                                <div key={t.id} className="flex items-center gap-3 px-10 py-2 hover:bg-white/2">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${t.status === 'done' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-400'}`}>
+                                    {t.status === 'done' ? '✓' : '○'}
+                                  </span>
+                                  <span className="flex-1 text-xs text-text-primary truncate">{t.title}</span>
+                                  {t.hours != null && <span className="text-xs text-text-secondary">{t.hours}ω</span>}
+                                  <button onClick={() => handleUnlinkTask(t.id)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer">
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {showPicker && (
+                            <div className="mx-4 mb-3 rounded-xl border border-blue-500/20 bg-blue-500/5 p-2 space-y-1">
+                              <p className="text-xs text-text-secondary mb-1">Επιλέξτε εργασία:</p>
+                              {unlinkableTasks.map(t => (
+                                <button
+                                  key={t.id}
+                                  onClick={() => handleLinkTask(t.id, fee.id)}
+                                  className="flex w-full items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/8 text-left cursor-pointer"
+                                >
+                                  <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${t.status === 'done' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-400'}`}>
+                                    {t.status === 'done' ? '✓' : '○'}
+                                  </span>
+                                  <span className="text-xs text-text-primary truncate">{t.title}</span>
+                                  {t.hours != null && <span className="text-xs text-text-secondary shrink-0">{t.hours}ω</span>}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Expenses section */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Έξοδα ({expenses.length})
+            </h3>
+            <button
+              onClick={() => setShowNewExpense(v => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Νέο Έξοδο
+            </button>
+          </div>
+
+          {showNewExpense && (
+            <NewExpenseForm
+              tenantId={tenantId}
+              caseId={caseId}
+              onSaved={() => { setShowNewExpense(false); reload(); }}
+              onCancel={() => setShowNewExpense(false)}
+            />
+          )}
+
+          {expenses.length === 0 && !showNewExpense ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-text-secondary">
+              <p className="text-sm">Δεν υπάρχουν έξοδα.</p>
+            </div>
+          ) : expenses.length > 0 ? (
+            <div className="rounded-xl border border-border/10 overflow-hidden divide-y divide-border/10">
+              {expenses.map((exp) => (
+                <div key={exp.id} className="flex items-center gap-3 px-4 py-3 bg-secondary-background hover:bg-white/2 transition-colors">
+                  <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                    <span className="text-sm font-semibold text-red-500">{formatEur(exp.amount)}</span>
+                    {exp.date && <span className="text-xs text-text-secondary">{formatDate(exp.date)}</span>}
+                    {exp.notes && <span className="text-xs text-text-secondary truncate">{exp.notes}</span>}
+                  </div>
+                  <button onClick={() => handleDeleteExpense(exp.id)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer shrink-0">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+
+        {/* RIGHT — Tasks with rates widget */}
+        <div className="rounded-xl border border-border/10 bg-secondary-background overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border/10">
+            <Clock className="h-4 w-4 text-blue-400 shrink-0" />
+            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex-1">
+              Χρεώσιμες Εργασίες
+            </h3>
+            {totalTaskHours > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-xs font-semibold">
+                {totalTaskHours}ω
+                {totalTaskAmount != null && <span className="text-blue-300">· {formatEur(totalTaskAmount)}</span>}
+              </span>
+            )}
+          </div>
+          {tasksWithHours.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-text-secondary">
+              <Clock className="h-8 w-8 opacity-20" />
+              <p className="text-sm">Δεν υπάρχουν εργασίες με ώρες.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/10">
+              {tasksWithHours.map(t => {
+                const amt = calcTaskAmount(t.hours, rates, t.category);
+                const isDone = t.status === 'done';
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/2 transition-colors">
+                    <div className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center
+                      ${isDone ? 'border-green-500 bg-green-500' : 'border-border/40'}`}>
+                      {isDone && <CheckCircle2 className="h-3 w-3 text-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm truncate ${isDone ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
+                        {t.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {t.category && (
+                          <span className="text-xs text-text-secondary">{TASK_CATEGORIES[t.category]}</span>
+                        )}
+                        {t.due_date && (
+                          <span className="text-xs text-text-secondary">{formatDate(t.due_date)}</span>
+                        )}
+                        {t.fee_id && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">Συνδεδεμένη</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span className="text-lg font-bold text-blue-400">{t.hours}ω</span>
+                      {amt != null && (
+                        <span className="text-sm text-blue-300 font-semibold">{formatEur(amt)}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {tasksWithHours.length > 0 && totalTaskAmount != null && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-border/10 bg-blue-500/5">
+              <span className="text-xs text-text-secondary">Σύνολο</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-blue-400">{totalTaskHours}ω</span>
+                <span className="text-sm font-semibold text-blue-300">{formatEur(totalTaskAmount)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>
     </div>
   );
 }

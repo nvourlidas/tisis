@@ -9,7 +9,7 @@ import NewContactModal from '../../Contacts/modals/NewContactModal';
 import type { CallFormData } from '../types';
 import type { ContactFormData } from '../../Contacts/types';
 
-type ContactHit = { id: string; name: string; phone: string | null };
+type ContactHit = { id: string; name: string; phone: string | null; email: string | null };
 
 type Props = {
   open: boolean;
@@ -29,6 +29,7 @@ const nowLocal = () => {
 
 const empty = (): CallFormData => ({
   phone: '',
+  email: '',
   caller_name: '',
   direction: 'phone',
   case_id: '',
@@ -79,7 +80,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
     if (open) {
       const phone = initialPhone ?? '';
       const preContact: ContactHit | null = initialContactId && initialContactName
-        ? { id: initialContactId, name: initialContactName, phone: phone || null }
+        ? { id: initialContactId, name: initialContactName, phone: phone || null, email: null }
         : null;
       setForm({ ...empty(), phone, case_id: initialCaseId ?? '', contact_id: initialContactId ?? '' });
       setContactQuery(preContact ? preContact.name : phone);
@@ -131,7 +132,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
   const selectContact = (c: ContactHit) => {
     setSelectedContact(c);
     setContactQuery(c.name);
-    setForm((f) => ({ ...f, phone: c.phone ?? f.phone, caller_name: c.name, contact_id: c.id }));
+    setForm((f) => ({ ...f, phone: c.phone ?? f.phone, email: c.email ?? f.email, caller_name: c.name, contact_id: c.id }));
     setShowContactDrop(false);
     setContactResults([]);
   };
@@ -163,7 +164,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
     setSaving(true);
     setError(null);
     try {
-      const callId = await createCall(tenantId, { ...form, no_case_intentional: !wantsCase && !form.case_id });
+      const callId = await createCall(tenantId, { ...form, created_at: new Date(form.created_at).toISOString(), no_case_intentional: !wantsCase && !form.case_id });
       if (form.create_task && pendingTask) {
         await createTask(tenantId, {
           title: pendingTask.title,
@@ -185,7 +186,7 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
 
   const handleNewContact = async (data: ContactFormData) => {
     const newContact = await createContact(tenantId, data);
-    selectContact({ id: newContact.id, name: newContact.name, phone: newContact.phone ?? null });
+    selectContact({ id: newContact.id, name: newContact.name, phone: newContact.phone ?? null, email: newContact.email ?? null });
     setShowNewContactModal(false);
   };
 
@@ -358,6 +359,18 @@ export default function NewCallModal({ open, onClose, onCreated, initialPhone, i
               placeholder="π.χ. 6912345678"
               value={form.phone}
               onChange={(e) => set('phone', e.target.value)}
+            />
+          </div>
+
+          {/* Email (always visible, pre-filled from contact) */}
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Email</label>
+            <input
+              type="email"
+              className="input w-full"
+              placeholder="π.χ. name@example.com"
+              value={form.email}
+              onChange={(e) => set('email', e.target.value)}
             />
           </div>
 

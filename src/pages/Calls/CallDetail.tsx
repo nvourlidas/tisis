@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Users, Mail, Briefcase, User, CalendarDays,
-  AlertCircle, RotateCcw, Pencil,
+  AlertCircle, RotateCcw, Pencil, Check, X,
 } from 'lucide-react';
-import { useAuth } from '../../auth';
-import { fetchCall } from './callUtils';
+import { fetchCall, updateCall } from './callUtils';
 import type { Call } from './types';
 import EditCallModal from './modals/EditCallModal';
 
@@ -30,12 +29,13 @@ const DIRECTION_COLOR: Record<string, { badge: string; icon: string }> = {
 export default function CallDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile } = useAuth();
-  const tenantId = profile?.tenant_id ?? '';
-
   const [call, setCall] = useState<Call | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const load = async () => {
     if (!id) return;
@@ -70,7 +70,7 @@ export default function CallDetail() {
 
   const dir = call.direction ?? 'phone';
   const colors = DIRECTION_COLOR[dir] ?? DIRECTION_COLOR.phone;
-  const dateObj = new Date(call.created_at);
+  const dateObj = new Date(call.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, ''));
   const dateStr = dateObj.toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const timeStr = dateObj.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
 
@@ -134,6 +134,15 @@ export default function CallDetail() {
                 bg="bg-border/10"
               />
             )}
+            {call.email && (
+              <InfoCard
+                icon={<Mail className="h-3.5 w-3.5" />}
+                label="Email"
+                value={call.email}
+                color="text-purple-500"
+                bg="bg-purple-500/10"
+              />
+            )}
             {call.caller_name && (
               <InfoCard
                 icon={<User className="h-3.5 w-3.5" />}
@@ -178,15 +187,75 @@ export default function CallDetail() {
         {/* Follow-up card */}
         {call.follow_up_required && (
           <div className="animate-fade-in-up rounded-2xl border border-orange-500/20 bg-orange-500/5 p-6 space-y-3">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-orange-400" />
-              <h2 className="text-sm font-semibold text-orange-400">Follow-up απαιτείται</h2>
-            </div>
-            {call.follow_up_notes && (
-              <div>
-                <div className="text-xs font-medium text-orange-400/70 uppercase tracking-wider mb-1">Εξέλιξη</div>
-                <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{call.follow_up_notes}</p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-orange-400" />
+                <h2 className="text-sm font-semibold text-orange-400">Follow-up απαιτείται</h2>
               </div>
+              {!editingNotes && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      await updateCall(call.id, { follow_up_required: false });
+                      await load();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/5 transition-all cursor-pointer"
+                  >
+                    <X className="h-3 w-3" />
+                    Διαγραφή
+                  </button>
+                  <button
+                    onClick={() => { setNotesValue(call.follow_up_notes ?? ''); setEditingNotes(true); setTimeout(() => textareaRef.current?.focus(), 0); }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-orange-500/20 bg-orange-500/10 text-xs font-medium text-orange-400 hover:bg-orange-500/20 transition-all cursor-pointer"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Επεξεργασία
+                  </button>
+                </div>
+              )}
+            </div>
+            {editingNotes ? (
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-orange-400/70 uppercase tracking-wider">Εξέλιξη</div>
+                <textarea
+                  ref={textareaRef}
+                  value={notesValue}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  rows={10}
+                  className="w-full rounded-xl border border-orange-500/30 bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/40 focus:outline-none focus:ring-1 focus:ring-orange-500/50 resize-none"
+                  placeholder="Προσθέστε σημειώσεις follow-up…"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={savingNotes}
+                    onClick={async () => {
+                      setSavingNotes(true);
+                      await updateCall(call.id, { follow_up_notes: notesValue || undefined });
+                      await load();
+                      setEditingNotes(false);
+                      setSavingNotes(false);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/20 border border-orange-500/30 text-xs font-medium text-orange-400 hover:bg-orange-500/30 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Check className="h-3 w-3" />
+                    Αποθήκευση
+                  </button>
+                  <button
+                    onClick={() => setEditingNotes(false)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 text-xs font-medium text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+                  >
+                    <X className="h-3 w-3" />
+                    Ακύρωση
+                  </button>
+                </div>
+              </div>
+            ) : (
+              call.follow_up_notes && (
+                <div>
+                  <div className="text-xs font-medium text-orange-400/70 uppercase tracking-wider mb-1">Εξέλιξη</div>
+                  <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{call.follow_up_notes}</p>
+                </div>
+              )
             )}
           </div>
         )}

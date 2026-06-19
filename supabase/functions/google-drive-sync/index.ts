@@ -48,7 +48,16 @@ Deno.serve(async (req) => {
 
     if (!tokenRow) return json({ ok: true, synced: false, reason: 'no_google_token' })
 
-    const accessToken = await getAccessToken(tokenRow.refresh_token)
+    let accessToken: string
+    try {
+      accessToken = await getAccessToken(tokenRow.refresh_token)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.toLowerCase().includes('expired') || msg.toLowerCase().includes('revoked') || msg.toLowerCase().includes('invalid_grant')) {
+        return json({ ok: false, reason: 'token_expired', error: msg })
+      }
+      throw err
+    }
     const authHeader = { Authorization: `Bearer ${accessToken}` }
 
     // upload-file uses multipart/form-data, others use JSON

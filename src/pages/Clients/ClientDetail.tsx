@@ -14,6 +14,7 @@ import type { Client } from './types';
 import type { CaseFormData } from '../Cases/types';
 import DataTable, { type ColumnDef } from '../../components/DataTable';
 import NewCaseModal from '../Cases/modals/NewCaseModal';
+import CaseEmails from '../Cases/components/CaseEmails';
 
 type CaseSummary = { id: string; code: string; title: string; status: string; created_at: string };
 
@@ -98,7 +99,7 @@ export default function ClientDetail() {
   const [form, setForm] = useState<Partial<Client>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'cases'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'cases' | 'emails'>('info');
   const [caseSearch, setCaseSearch] = useState('');
   const [showNewCase, setShowNewCase] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -249,7 +250,7 @@ export default function ClientDetail() {
 
       {/* Tabs */}
       <div className="animate-fade-in-up flex gap-1 border-b border-border/10">
-        {([['info', 'Στοιχεία'], ['cases', `Υποθέσεις${cases.length > 0 ? ` (${cases.length})` : ''}`]] as const).map(([tab, label]) => (
+        {([['info', 'Στοιχεία'], ['cases', `Υποθέσεις${cases.length > 0 ? ` (${cases.length})` : ''}`], ['emails', 'Email']] as const).map(([tab, label]) => (
           <button
             key={tab}
             onClick={() => { setActiveTab(tab); setEditing(false); setError(null); }}
@@ -349,6 +350,9 @@ export default function ClientDetail() {
           </div>
         )}
       </div>}
+
+      {/* Emails tab */}
+      {activeTab === 'emails' && <div className="animate-fade-in-up stagger-1"><CaseEmails clientEmail={client.email} /></div>}
 
       {/* Cases tab */}
       {activeTab === 'cases' && <div className="animate-fade-in-up stagger-1 space-y-3">

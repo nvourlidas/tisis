@@ -18,6 +18,7 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
   const [direction, setDirection] = useState<'phone' | 'inperson' | 'email'>('phone');
   const [createdAt, setCreatedAt] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [callerName, setCallerName] = useState('');
   const [description, setDescription] = useState('');
   const [followUp, setFollowUp] = useState(false);
@@ -41,6 +42,7 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
       d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
       setCreatedAt(d.toISOString().slice(0, 16));
       setPhone(call.phone ?? '');
+      setEmail(call.email ?? '');
       setCallerName(call.caller_name ?? '');
       setDescription(call.description ?? '');
       setFollowUp(call.follow_up_required);
@@ -87,6 +89,7 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
       await updateCall(call.id, {
         direction,
         phone: phone || undefined,
+        email: email || undefined,
         caller_name: callerName || undefined,
         description,
         follow_up_required: followUp,
@@ -178,6 +181,18 @@ export default function EditCallModal({ open, call, onClose, onUpdated }: Props)
               placeholder="π.χ. 6912345678"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+            />
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Email</label>
+            <input
+              type="email"
+              className="input w-full"
+              placeholder="π.χ. name@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
 

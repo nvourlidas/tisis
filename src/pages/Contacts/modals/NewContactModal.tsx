@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { ContactFormData } from '../types';
+import { mergeNotesWithAutoBlock } from '../contactUtils';
 
 type Props = {
   open: boolean;
@@ -33,7 +34,9 @@ export default function NewContactModal({ open, onClose, onSubmit, initialPhone,
     setError(null);
     setLoading(true);
     try {
-      await onSubmit(form);
+      const { vat, father_name, mother_name, amka, iban, at, taxis_username, taxis_password } = form;
+      const notes = mergeNotesWithAutoBlock(form.notes, { vat, father_name, mother_name, amka, iban, at, taxis_username, taxis_password });
+      await onSubmit({ ...form, notes });
       setForm(empty);
       onClose();
     } catch (err: any) {

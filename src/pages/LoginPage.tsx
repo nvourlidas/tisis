@@ -33,7 +33,7 @@ export default function LoginPage() {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/`,
-        scopes: 'openid email profile https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive',
+        scopes: 'openid email profile https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.readonly',
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',

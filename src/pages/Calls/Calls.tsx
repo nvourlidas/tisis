@@ -186,6 +186,7 @@ export default function Calls() {
         if (
           !(c.caller_name ?? '').toLowerCase().includes(q) &&
           !(c.phone ?? '').includes(q) &&
+          !(c.email ?? '').toLowerCase().includes(q) &&
           !(c.description ?? '').toLowerCase().includes(q) &&
           !(c.case_code ?? '').toLowerCase().includes(q)
         ) return false;
@@ -234,6 +235,13 @@ export default function Calls() {
       sortValue: (c) => c.phone ?? '',
     },
     {
+      key: 'email',
+      header: 'Email',
+      render: (c) => <span className="text-text-secondary">{c.email ?? '—'}</span>,
+      sortValue: (c) => c.email ?? '',
+      defaultVisible: false,
+    },
+    {
       key: 'follow_up',
       header: 'Follow-up',
       render: (c) => c.follow_up_required ? (
@@ -264,7 +272,7 @@ export default function Calls() {
       header: 'Ημ/νία',
       render: (c) => (
         <span className="text-xs text-text-secondary whitespace-nowrap">
-          {new Date(c.created_at).toLocaleDateString('el-GR', {
+          {new Date(c.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toLocaleDateString('el-GR', {
             day: '2-digit', month: '2-digit', year: 'numeric',
             hour: '2-digit', minute: '2-digit',
           })}

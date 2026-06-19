@@ -2,6 +2,33 @@ import { supabase } from '../../lib/supabase';
 import type { Contact, ContactFormData, ContactCase } from './types';
 import type { Client } from '../Clients/types';
 
+const AUTO_NOTES_SEPARATOR = '\n\n--- Στοιχεία TISIS ---';
+
+type NonGoogleFields = {
+  vat?: string; father_name?: string; mother_name?: string;
+  amka?: string; iban?: string; at?: string;
+  taxis_username?: string; taxis_password?: string;
+};
+
+function buildAutoNotesBlock(fields: NonGoogleFields): string {
+  const lines: string[] = [];
+  if (fields.vat) lines.push(`ΑΦΜ: ${fields.vat}`);
+  if (fields.amka) lines.push(`ΑΜΚΑ: ${fields.amka}`);
+  if (fields.iban) lines.push(`IBAN: ${fields.iban}`);
+  if (fields.at) lines.push(`ΑΤ: ${fields.at}`);
+  if (fields.father_name) lines.push(`Πατρώνυμο: ${fields.father_name}`);
+  if (fields.mother_name) lines.push(`Μητρώνυμο: ${fields.mother_name}`);
+  if (fields.taxis_username) lines.push(`TAXISnet χρήστης: ${fields.taxis_username}`);
+  if (fields.taxis_password) lines.push(`TAXISnet κωδικός: ${fields.taxis_password}`);
+  return lines.length ? AUTO_NOTES_SEPARATOR + '\n' + lines.join('\n') : '';
+}
+
+export function mergeNotesWithAutoBlock(manualNotes: string, fields: NonGoogleFields): string {
+  const stripped = manualNotes.split(AUTO_NOTES_SEPARATOR)[0].trimEnd();
+  const block = buildAutoNotesBlock(fields);
+  return block ? stripped + block : stripped;
+}
+
 export async function fetchContacts(tenantId: string): Promise<Contact[]> {
   const BATCH = 1000;
   const all: Contact[] = [];

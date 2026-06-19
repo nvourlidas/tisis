@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
-import { fetchContact, fetchContactCases, updateContact, deleteContact, fetchLinkedClient, promoteContactToClient } from './contactUtils';
+import { supabase } from '../../lib/supabase';
+import { fetchContact, fetchContactCases, updateContact, deleteContact, fetchLinkedClient, promoteContactToClient, mergeNotesWithAutoBlock } from './contactUtils';
 import { fetchCallsByContact, searchCallsForLinking, updateCall } from '../Calls/callUtils';
 import type { Call } from '../Calls/types';
 import NewCallModal from '../Calls/modals/NewCallModal';
@@ -100,16 +101,53 @@ export default function ContactDetail() {
     setSaving(true);
     setError(null);
     try {
+      const vat = form.vat ?? '', father_name = form.father_name ?? '', mother_name = form.mother_name ?? '';
+      const amka = form.amka ?? '', iban = form.iban ?? '', at = form.at ?? '';
+      const taxis_username = form.taxis_username ?? '', taxis_password = form.taxis_password ?? '';
+      const notes = mergeNotesWithAutoBlock(form.notes ?? '', { vat, father_name, mother_name, amka, iban, at, taxis_username, taxis_password });
       await updateContact(id, {
         name: form.name, phone: form.phone ?? '', phone2: form.phone2 ?? '',
-        email: form.email ?? '', notes: form.notes ?? '',
-        vat: form.vat ?? '', address: form.address ?? '',
+        email: form.email ?? '', notes,
+        vat, address: form.address ?? '',
         job_title: form.job_title ?? '', organization: form.organization ?? '', website: form.website ?? '',
-        father_name: form.father_name ?? '', mother_name: form.mother_name ?? '',
-        birthdate: form.birthdate ?? '', amka: form.amka ?? '', iban: form.iban ?? '',
-        at: form.at ?? '', taxis_username: form.taxis_username ?? '', taxis_password: form.taxis_password ?? '',
+        father_name, mother_name,
+        birthdate: form.birthdate ?? '', amka, iban,
+        at, taxis_username, taxis_password,
       });
-      setContact((prev) => prev ? { ...prev, ...form } : prev);
+
+      // Sync notes back to Google Contacts if linked
+      const googleId = contact?.google_contact_id;
+      if (googleId) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.provider_token;
+        if (token) {
+          try {
+            // GET current contact to obtain required etag
+            const getRes = await fetch(
+              `https://people.googleapis.com/v1/${googleId}?personFields=metadata`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (getRes.ok) {
+              const person = await getRes.json();
+              await fetch(
+                `https://people.googleapis.com/v1/${googleId}:updateContact?updatePersonFields=biographies`,
+                {
+                  method: 'PATCH',
+                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    etag: person.etag,
+                    biographies: notes ? [{ value: notes, contentType: 'TEXT_PLAIN' }] : [],
+                  }),
+                }
+              );
+            }
+          } catch {
+            // Google sync failure is non-fatal
+          }
+        }
+      }
+
+      setContact((prev) => prev ? { ...prev, ...form, notes } : prev);
       setEditing(false);
     } catch (err: any) {
       setError(err?.message ?? 'Αποτυχία αποθήκευσης.');

@@ -73,6 +73,7 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [noToken, setNoToken] = useState(false);
+  const [tokenExpired, setTokenExpired] = useState(false);
   const [breadcrumbs, setBreadcrumbs] = useState<FolderCrumb[]>([]);
   const [showSubfolderInput, setShowSubfolderInput] = useState(false);
   const [subfolderName, setSubfolderName] = useState('');
@@ -98,6 +99,7 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
     try {
       const data = await callDriveSync({ action: 'list-files', folderId: targetId });
       if (data.reason === 'no_google_token') { setNoToken(true); return; }
+      if (data.reason === 'token_expired' || (data.error && /expired|revoked|invalid_grant/i.test(data.error))) { setTokenExpired(true); return; }
       if (data.ok) setFiles(data.files);
     } finally {
       setLoading(false);
@@ -180,6 +182,42 @@ export default function CaseFiles({ caseId, caseCode, caseTitle, folderId, folde
     return (
       <div className="text-sm text-text-secondary py-4">
         Δεν έχει συνδεθεί λογαριασμός Google για αυτόν τον οργανισμό.
+      </div>
+    );
+  }
+
+  if (tokenExpired) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-surface rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4">
+          <h3 className="text-base font-semibold text-text-primary">Σύνδεση Google Drive</h3>
+          <p className="text-sm text-text-secondary">
+            Η σύνδεση με το Google έχει λήξει ή ανακλήθηκε. Κάντε κλικ παρακάτω για να ανανεώσετε την πρόσβαση χωρίς να αποσυνδεθείτε.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setTokenExpired(false)}
+              className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors cursor-pointer"
+            >
+              Ακύρωση
+            </button>
+            <button
+              onClick={() => {
+                supabase.auth.signInWithOAuth({
+                  provider: 'google',
+                  options: {
+                    scopes: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.readonly',
+                    queryParams: { access_type: 'offline', prompt: 'consent' },
+                    redirectTo: window.location.href,
+                  },
+                });
+              }}
+              className="px-4 py-2 text-sm bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors cursor-pointer"
+            >
+              Επανασύνδεση Google
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

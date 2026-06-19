@@ -53,6 +53,13 @@ async function getAccessToken(refreshToken: string): Promise<string> {
   return data.access_token
 }
 
+const AUTO_SEP = '\n\n--- Στοιχεία TISIS ---'
+function stripAutoBlock(notes: string | null | undefined): string | null {
+  if (!notes) return null
+  const stripped = notes.split(AUTO_SEP)[0].trimEnd()
+  return stripped || null
+}
+
 function buildPersonBody(name: string, phone: string | null, phone2: string | null, email: string | null, organization?: string | null, job_title?: string | null, website?: string | null, birthdate?: string | null, address?: string | null, notes?: string | null) {
   return {
     names: [{ givenName: name }],
@@ -71,8 +78,8 @@ function buildPersonBody(name: string, phone: string | null, phone2: string | nu
 
 function parseBirthday(b: any): string | null {
   const d = b?.date
-  if (!d?.month || !d?.day || !d?.year) return null
-  const year = String(d.year).padStart(4, '0')
+  if (!d?.month || !d?.day) return null
+  const year = d.year ? String(d.year).padStart(4, '0') : '1900'
   const month = String(d.month).padStart(2, '0')
   const day = String(d.day).padStart(2, '0')
   return `${year}-${month}-${day}`
@@ -179,6 +186,49 @@ Deno.serve(async (req) => {
       return json({ ok: true, synced: true })
     }
 
+    if (action === 'link') {
+      // Match unlinked TISIS contacts to Google contacts by phone or email
+      const googleContacts = await fetchAllGoogleContacts(accessToken)
+
+      const { data: unlinked, error: fetchErr } = await supabase
+        .from('contacts')
+        .select('id, phone, phone2, email')
+        .eq('tenant_id', tenantId)
+        .is('google_contact_id', null)
+
+      if (fetchErr) throw new Error(fetchErr.message)
+
+      // Build lookup maps from Google contacts
+      const byPhone = new Map<string, string>()
+      const byEmail = new Map<string, string>()
+      for (const [resourceName, g] of googleContacts) {
+        if (g.phone) byPhone.set(g.phone.replace(/\s+/g, ''), resourceName)
+        if (g.phone2) byPhone.set(g.phone2.replace(/\s+/g, ''), resourceName)
+        if (g.email) byEmail.set(g.email.toLowerCase(), resourceName)
+      }
+
+      let linked = 0
+      for (const contact of unlinked ?? []) {
+        const p1 = contact.phone?.replace(/\s+/g, '')
+        const p2 = contact.phone2?.replace(/\s+/g, '')
+        const em = contact.email?.toLowerCase()
+        const resourceName =
+          (p1 && byPhone.get(p1)) ||
+          (p2 && byPhone.get(p2)) ||
+          (em && byEmail.get(em)) ||
+          null
+        if (!resourceName) continue
+        await supabase
+          .from('contacts')
+          .update({ google_contact_id: resourceName })
+          .eq('id', contact.id)
+          .eq('tenant_id', tenantId)
+        linked++
+      }
+
+      return json({ ok: true, linked, unlinkedBefore: (unlinked ?? []).length })
+    }
+
     if (action === 'pull') {
       // Fetch all Google contacts
       const googleContacts = await fetchAllGoogleContacts(accessToken)
@@ -193,9 +243,19 @@ Deno.serve(async (req) => {
       if (fetchErr) throw new Error(fetchErr.message)
 
       let updated = 0
+      const debugMisses: string[] = []
+      const debugSkipped: Array<{ id: string; name: string; notesTisis: string | null; notesGoogle: string | null }> = []
+
       for (const contact of tisisContacts ?? []) {
         const googleData = googleContacts.get(contact.google_contact_id)
-        if (!googleData) continue
+        if (!googleData) {
+          debugMisses.push(contact.google_contact_id)
+          continue
+        }
+
+        // Strip auto-block from both sides before comparing — we own that block, not Google
+        const tisisManualNotes = stripAutoBlock(contact.notes)
+        const googleManualNotes = stripAutoBlock(googleData.notes)
 
         if (
           googleData.name === contact.name &&
@@ -207,8 +267,19 @@ Deno.serve(async (req) => {
           googleData.website === contact.website &&
           googleData.birthdate === contact.birthdate &&
           googleData.address === contact.address &&
-          googleData.notes === contact.notes
-        ) continue
+          googleManualNotes === tisisManualNotes
+        ) {
+          debugSkipped.push({ id: contact.id, name: contact.name, notesTisis: tisisManualNotes, notesGoogle: googleManualNotes })
+          continue
+        }
+
+        // Rebuild notes: Google's manual notes + our existing auto-block (if any)
+        const autoBlockSuffix = contact.notes?.includes(AUTO_SEP)
+          ? contact.notes.slice(contact.notes.indexOf(AUTO_SEP))
+          : ''
+        const mergedNotes = googleManualNotes
+          ? googleManualNotes + autoBlockSuffix
+          : (autoBlockSuffix.trimStart() || null)
 
         await supabase
           .from('contacts')
@@ -222,7 +293,7 @@ Deno.serve(async (req) => {
             website: googleData.website,
             birthdate: googleData.birthdate,
             address: googleData.address,
-            notes: googleData.notes,
+            notes: mergedNotes,
           })
           .eq('id', contact.id)
           .eq('tenant_id', tenantId)
@@ -230,7 +301,7 @@ Deno.serve(async (req) => {
         updated++
       }
 
-      return json({ ok: true, updated })
+      return json({ ok: true, updated, debug: { googleFetched: googleContacts.size, tisisLinked: (tisisContacts ?? []).length, misses: debugMisses, skipped: debugSkipped.slice(0, 5) } })
     }
 
     return json({ error: 'Unknown action' }, 400)

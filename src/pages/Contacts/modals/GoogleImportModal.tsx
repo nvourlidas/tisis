@@ -25,8 +25,8 @@ function normalizePhone(raw: string): string {
 
 function parseBirthday(b: any): string | null {
   const d = b?.date;
-  if (!d?.month || !d?.day || !d?.year) return null;
-  const year = String(d.year).padStart(4, '0');
+  if (!d?.month || !d?.day) return null;
+  const year = d.year ? String(d.year).padStart(4, '0') : '1900';
   const month = String(d.month).padStart(2, '0');
   const day = String(d.day).padStart(2, '0');
   return `${year}-${month}-${day}`;
@@ -154,19 +154,22 @@ export default function GoogleImportModal({ open, onClose, onImported }: Props) 
     const byEmail = new Map((existing ?? []).filter(c => c.email).map(c => [c.email, c]));
 
     const toInsert: typeof toImport = [];
-    const toBackfill: Array<{ id: string; resourceName: string }> = [];
+    const toBackfill: Array<{ id: string; resourceName: string; phone2: string | null; birthdate: string | null }> = [];
 
     for (const c of toImport) {
       const match = (c.phone && byPhone.get(c.phone)) || (c.email && byEmail.get(c.email));
       if (match) {
-        if (!match.google_contact_id) toBackfill.push({ id: match.id, resourceName: c.resourceName });
+        if (!match.google_contact_id) toBackfill.push({ id: match.id, resourceName: c.resourceName, phone2: c.phone2, birthdate: c.birthdate });
       } else {
         toInsert.push(c);
       }
     }
 
-    for (const { id, resourceName } of toBackfill) {
-      await supabase.from('contacts').update({ google_contact_id: resourceName }).eq('id', id);
+    for (const { id, resourceName, phone2, birthdate } of toBackfill) {
+      const update: Record<string, string | null> = { google_contact_id: resourceName };
+      if (phone2) update.phone2 = phone2;
+      if (birthdate) update.birthdate = birthdate;
+      await supabase.from('contacts').update(update).eq('id', id);
     }
 
     console.log('[Import] toInsert:', toInsert.length, 'backfill:', toBackfill.length, 'tenantId:', tenantId);
@@ -215,13 +218,31 @@ export default function GoogleImportModal({ open, onClose, onImported }: Props) 
           )}
 
           {status === 'no_token' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <p className="text-sm text-text-secondary">
-                Δεν βρέθηκε Google token. Αυτό συμβαίνει όταν η σύνδεση έγινε με email/password ή έχει λήξει η Google session.
+                Δεν βρέθηκε Google token. Έχει λήξει η σύνδεση με Google ή έχει γίνει σύνδεση με email/password.
               </p>
-              <p className="text-sm text-text-secondary">
-                Αποσυνδεθείτε και συνδεθείτε ξανά με Google για να έχετε πρόσβαση στις επαφές σας.
-              </p>
+              <button
+                onClick={async () => {
+                  await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                      scopes: 'https://www.googleapis.com/auth/contacts',
+                      redirectTo: window.location.href,
+                      queryParams: { access_type: 'offline', prompt: 'consent' },
+                    },
+                  });
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary text-white hover:bg-primary/90 transition-colors cursor-pointer"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="white"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="white"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="white"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="white"/>
+                </svg>
+                Ανανέωση σύνδεσης Google
+              </button>
             </div>
           )}
 

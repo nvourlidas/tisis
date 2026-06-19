@@ -25,6 +25,7 @@ export type Case = {
   created_at: string;
   // joined
   client_name?: string | null;
+  client_email?: string | null;
   stage_name?: string | null;
 };
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Briefcase, Info, Users, Phone,
-  CheckSquare, TrendingUp, FolderOpen, RotateCcw, Trash2,
+  CheckSquare, TrendingUp, FolderOpen, RotateCcw, Trash2, Mail,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { fetchCase, deleteCase } from './caseUtils';
@@ -13,6 +13,7 @@ import CaseCalls from './components/CaseCalls';
 import CaseTasks from './components/CaseTasks';
 import CaseFinancials from './components/CaseFinancials';
 import CaseFiles from './components/CaseFiles';
+import CaseEmails from './components/CaseEmails';
 
 const STATUS_LABELS: Record<string, string> = {
   active:  'Ενεργή',
@@ -32,7 +33,7 @@ const STATUS_DOT: Record<string, string> = {
   closed:  'bg-text-secondary/40',
 };
 
-type Tab = 'info' | 'contacts' | 'calls' | 'tasks' | 'financials' | 'files';
+type Tab = 'info' | 'contacts' | 'calls' | 'tasks' | 'financials' | 'files' | 'emails';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'info',       label: 'Πληροφορίες', icon: <Info className="h-3.5 w-3.5" /> },
@@ -41,6 +42,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'tasks',      label: 'Εργασίες',    icon: <CheckSquare className="h-3.5 w-3.5" /> },
   { id: 'financials', label: 'Οικονομικά',  icon: <TrendingUp className="h-3.5 w-3.5" /> },
   { id: 'files',      label: 'Αρχεία',      icon: <FolderOpen className="h-3.5 w-3.5" /> },
+  { id: 'emails',     label: 'Email',        icon: <Mail className="h-3.5 w-3.5" /> },
 ];
 
 export default function CaseDetail() {
@@ -193,6 +195,7 @@ export default function CaseDetail() {
             }
           />
         )}
+        {tab === 'emails' && <CaseEmails clientEmail={caseData.client_email} />}
       </div>
     </div>
   );

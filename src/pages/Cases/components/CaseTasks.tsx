@@ -771,6 +771,7 @@ function LinkTaskModal({ tenantId, alreadyLinked, linking, onSelect, onClose }: 
 
   const filtered = results.filter(t => {
     if (alreadyLinked.includes(t.id)) return false;
+    if (t.case_id) return false;
     if (category && t.category !== category) return false;
     if (filterYear !== null && t.due_date) {
       if (new Date(t.due_date + 'T00:00:00').getFullYear() !== filterYear) return false;

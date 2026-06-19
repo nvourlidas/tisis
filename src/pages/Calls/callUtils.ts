@@ -48,13 +48,13 @@ export async function fetchUnlinkedCalls(tenantId: string): Promise<Call[]> {
 export async function searchContactsForCall(
   tenantId: string,
   query: string,
-): Promise<{ id: string; name: string; phone: string | null }[]> {
+): Promise<{ id: string; name: string; phone: string | null; email: string | null }[]> {
   if (query.trim().length < 2) return [];
   const { data } = await supabase
     .from('contacts')
-    .select('id, name, phone')
+    .select('id, name, phone, email')
     .eq('tenant_id', tenantId)
-    .or(`name.ilike.%${query}%,phone.ilike.%${query}%`)
+    .or(`name.ilike.%${query}%,phone.ilike.%${query}%,email.ilike.%${query}%`)
     .order('name')
     .limit(5);
   return data ?? [];
@@ -141,6 +141,7 @@ export async function linkCallToCase(callId: string, caseId: string): Promise<vo
 
 export type CallUpdateData = {
   phone?: string;
+  email?: string;
   caller_name?: string;
   direction?: import('./types').CallDirection;
   description?: string;
