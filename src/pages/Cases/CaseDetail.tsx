@@ -181,7 +181,7 @@ export default function CaseDetail() {
         )}
         {tab === 'contacts' && <CaseContacts caseId={caseData.id} tenantId={tenantId} />}
         {tab === 'calls' && <CaseCalls caseId={caseData.id} tenantId={tenantId} />}
-        {tab === 'tasks' && <CaseTasks caseId={caseData.id} tenantId={tenantId} />}
+        {tab === 'tasks' && <CaseTasks caseId={caseData.id} tenantId={tenantId} caseCode={caseData.code} clientName={caseData.client_name ?? undefined} />}
         {tab === 'financials' && <CaseFinancials caseId={caseData.id} tenantId={tenantId} />}
         {tab === 'files' && (
           <CaseFiles

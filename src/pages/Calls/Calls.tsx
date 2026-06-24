@@ -246,7 +246,11 @@ export default function Calls() {
       header: 'Follow-up',
       render: (c) => c.follow_up_required ? (
         <div className="flex flex-col gap-0.5">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 w-fit">Follow-up</span>
+          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider w-fit ${
+            c.follow_up_done ? 'bg-green-500/15 text-green-400' : 'bg-orange-500/15 text-orange-400'
+          }`}>
+            {c.follow_up_done ? 'Ολοκληρώθηκε' : 'Follow-up'}
+          </span>
           {c.follow_up_notes && (
             <span className="text-xs text-text-secondary line-clamp-2 max-w-48">{c.follow_up_notes}</span>
           )}
@@ -272,9 +276,9 @@ export default function Calls() {
       header: 'Ημ/νία',
       render: (c) => (
         <span className="text-xs text-text-secondary whitespace-nowrap">
-          {new Date(c.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toLocaleDateString('el-GR', {
+          {new Date(c.created_at).toLocaleDateString('el-GR', {
             day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit',
+            hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Athens',
           })}
         </span>
       ),

@@ -968,7 +968,7 @@ function DayPanel({ day, items, todayStr, onNavigate, onClose, onAddTask, onTogg
                       {item.caller_name && <span className="text-sm font-medium text-text-primary">{item.caller_name}</span>}
                       {item.phone && <span className="text-sm text-text-secondary font-mono">{item.phone}</span>}
                       <span className="text-xs text-text-secondary ml-auto">
-                        {new Date(item.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(item.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', hour12: false })}
                       </span>
                     </div>
                     {item.case_code && (

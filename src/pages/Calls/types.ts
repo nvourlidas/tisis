@@ -12,9 +12,11 @@ export type Call = {
   contact_id: string | null;
   description: string | null;
   follow_up_required: boolean;
+  follow_up_done: boolean;
   follow_up_notes: string | null;
   no_case_intentional: boolean;
   created_at: string;
+  google_event_id: string | null;
   // joined
   case_code?: string | null;
   case_title?: string | null;

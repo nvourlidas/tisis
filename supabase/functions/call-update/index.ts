@@ -14,16 +14,26 @@ Deno.serve(async (req) => {
     const auth = await authenticate(req)
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
-    const { call_id, case_id } = await req.json()
-    if (!call_id || !case_id) return json({ error: 'call_id and case_id are required' }, 400)
-    const { error } = await supabase.from('calls').update({ case_id }).eq('id', call_id).eq('tenant_id', tenantId)
+    const { id, phone, email, caller_name, direction, description, follow_up_required, follow_up_done, follow_up_notes, case_id, contact_id, created_at } = await req.json()
+    if (!id) return json({ error: 'id is required' }, 400)
+
+    const updates: Record<string, unknown> = {}
+    if (phone !== undefined) updates.phone = phone || null
+    if (email !== undefined) updates.email = email || null
+    if (caller_name !== undefined) updates.caller_name = caller_name || null
+    if (direction !== undefined) updates.direction = direction
+    if (description !== undefined) updates.description = description || null
+    if (follow_up_required !== undefined) updates.follow_up_required = follow_up_required
+    if (follow_up_done !== undefined) updates.follow_up_done = follow_up_done
+    if (follow_up_notes !== undefined) updates.follow_up_notes = follow_up_notes || null
+    if (case_id !== undefined) updates.case_id = case_id || null
+    if (contact_id !== undefined) updates.contact_id = contact_id || null
+    if (created_at !== undefined) updates.created_at = created_at
+
+    const { error } = await supabase.from('calls').update(updates).eq('id', id).eq('tenant_id', tenantId)
     if (error) return json({ error: error.message }, 400)
 
-    const { data: call } = await supabase
-      .from('calls')
-      .select('google_event_id, caller_name, phone, direction, description, created_at')
-      .eq('id', call_id)
-      .single()
+    const { data: call } = await supabase.from('calls').select('google_event_id, caller_name, phone, direction, description, created_at').eq('id', id).single()
     if (call?.google_event_id) {
       const { date: callDate, time: callTime } = toAthens(call.created_at as string)
       const dirLabel = call.direction === 'inperson' ? 'Συνάντηση' : call.direction === 'email' ? 'Email' : 'Κλήση'

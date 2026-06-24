@@ -65,6 +65,7 @@ export type CaseTask = {
   title: string;
   description: string | null;
   due_date: string | null;
+  due_time: string | null;
   status: 'open' | 'done';
   completed_at: string | null;
   created_at: string;

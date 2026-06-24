@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
 
-    const { action, taskId, title, description, due_date, due_time, google_event_id } = await req.json()
+    const { action, taskId, callId, title, description, due_date, due_time, google_event_id } = await req.json()
 
     const { data: tokenRow } = await supabase
       .from('tenant_google_tokens')
@@ -121,7 +121,9 @@ Deno.serve(async (req) => {
     const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }
 
     if (action === 'create') {
-      if (!taskId || !title) return json({ error: 'taskId and title are required' }, 400)
+      const recordId = taskId ?? callId
+      const table = callId ? 'calls' : 'tasks'
+      if (!recordId || !title) return json({ error: 'recordId and title are required' }, 400)
       const res = await fetch(`${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events`, {
         method: 'POST',
         headers,
@@ -131,9 +133,9 @@ Deno.serve(async (req) => {
       if (!res.ok) throw new Error(event.error?.message ?? 'Failed to create calendar event')
 
       await supabase
-        .from('tasks')
+        .from(table)
         .update({ google_event_id: event.id })
-        .eq('id', taskId)
+        .eq('id', recordId)
         .eq('tenant_id', tenantId)
 
       return json({ ok: true, synced: true, google_event_id: event.id })

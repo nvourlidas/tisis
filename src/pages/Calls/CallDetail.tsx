@@ -2,9 +2,9 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Users, Mail, Briefcase, User, CalendarDays,
-  AlertCircle, RotateCcw, Pencil, Check, X,
+  AlertCircle, RotateCcw, Pencil, Check, X, CalendarPlus,
 } from 'lucide-react';
-import { fetchCall, updateCall } from './callUtils';
+import { fetchCall, updateCall, syncCallToCalendar } from './callUtils';
 import type { Call } from './types';
 import EditCallModal from './modals/EditCallModal';
 
@@ -32,6 +32,7 @@ export default function CallDetail() {
   const [call, setCall] = useState<Call | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
@@ -70,9 +71,9 @@ export default function CallDetail() {
 
   const dir = call.direction ?? 'phone';
   const colors = DIRECTION_COLOR[dir] ?? DIRECTION_COLOR.phone;
-  const dateObj = new Date(call.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, ''));
-  const dateStr = dateObj.toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const timeStr = dateObj.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+  const dateObj = new Date(call.created_at);
+  const dateStr = dateObj.toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Athens' });
+  const timeStr = dateObj.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Athens' });
 
   return (
     <>
@@ -107,13 +108,28 @@ export default function CallDetail() {
                 </span>
               </div>
             </div>
-            <button
-              onClick={() => setEditing(true)}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Επεξεργασία
-            </button>
+            <div className="flex items-center gap-2">
+              {!call.google_event_id && (
+                <button
+                  disabled={syncing}
+                  onClick={async () => {
+                    setSyncing(true);
+                    try { await syncCallToCalendar(call); await load(); } finally { setSyncing(false); }
+                  }}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-500/20 bg-blue-500/10 text-xs font-medium text-blue-400 hover:bg-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <CalendarPlus className="h-3.5 w-3.5" />
+                  {syncing ? 'Συγχρονισμός…' : 'Προσθήκη στο Calendar'}
+                </button>
+              )}
+              <button
+                onClick={() => setEditing(true)}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Επεξεργασία
+              </button>
+            </div>
           </div>
 
           {/* Info chips */}
@@ -186,24 +202,43 @@ export default function CallDetail() {
 
         {/* Follow-up card */}
         {call.follow_up_required && (
-          <div className="animate-fade-in-up rounded-2xl border border-orange-500/20 bg-orange-500/5 p-6 space-y-3">
+          <div className={`animate-fade-in-up rounded-2xl border p-6 space-y-3 ${call.follow_up_done ? 'border-green-500/20 bg-green-500/5' : 'border-orange-500/20 bg-orange-500/5'}`}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-orange-400" />
-                <h2 className="text-sm font-semibold text-orange-400">Follow-up απαιτείται</h2>
+                {call.follow_up_done
+                  ? <Check className="h-4 w-4 text-green-400" />
+                  : <AlertCircle className="h-4 w-4 text-orange-400" />
+                }
+                <h2 className={`text-sm font-semibold ${call.follow_up_done ? 'text-green-400' : 'text-orange-400'}`}>
+                  {call.follow_up_done ? 'Follow-up ολοκληρώθηκε' : 'Follow-up απαιτείται'}
+                </h2>
               </div>
               {!editingNotes && (
                 <div className="flex items-center gap-2">
+                  {!call.follow_up_done && (
                   <button
                     onClick={async () => {
-                      await updateCall(call.id, { follow_up_required: false });
+                      await updateCall(call.id, { follow_up_done: true });
                       await load();
                     }}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/5 transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-green-500/20 bg-green-500/10 text-xs font-medium text-green-400 hover:bg-green-500/20 transition-all cursor-pointer"
                   >
-                    <X className="h-3 w-3" />
-                    Διαγραφή
+                    <Check className="h-3 w-3" />
+                    Ολοκληρώθηκε
                   </button>
+                  )}
+                  {call.follow_up_done && (
+                  <button
+                    onClick={async () => {
+                      await updateCall(call.id, { follow_up_done: false });
+                      await load();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-orange-400 hover:border-orange-500/20 hover:bg-orange-500/5 transition-all cursor-pointer"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Αναίρεση
+                  </button>
+                  )}
                   <button
                     onClick={() => { setNotesValue(call.follow_up_notes ?? ''); setEditingNotes(true); setTimeout(() => textareaRef.current?.focus(), 0); }}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-orange-500/20 bg-orange-500/10 text-xs font-medium text-orange-400 hover:bg-orange-500/20 transition-all cursor-pointer"

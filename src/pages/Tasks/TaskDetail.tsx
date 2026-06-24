@@ -60,6 +60,7 @@ export default function TaskDetail() {
         case_id: values.case_id || '',
         category: values.category || undefined,
         extra_data: values.extra_data,
+        hours: values.hours,
       });
       await addTaskLink(tenantId, id, newTask.id);
       setShowCreateLinked(false);
@@ -416,7 +417,7 @@ export default function TaskDetail() {
             <div className="p-6">
               <TaskForm
                 tenantId={tenantId}
-                initial={{ case_id: task.case_id ?? '', case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined, due_date: new Date().toISOString().slice(0, 10) }}
+                initial={{ case_id: task.case_id ?? '', case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined, case_client_name: task.client_name ?? undefined, due_date: new Date().toISOString().slice(0, 10) }}
                 saving={creatingLinked}
                 error={createLinkedError}
                 onSubmit={handleCreateLinked}
@@ -443,7 +444,7 @@ export default function TaskDetail() {
             <div className="p-6">
               <TaskForm
                 tenantId={tenantId}
-                initial={{ ...taskToFormValues({ ...task, linked_tasks: linkedTasks }), id: task.id, case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined }}
+                initial={{ ...taskToFormValues({ ...task, linked_tasks: linkedTasks }), id: task.id, case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined, case_client_name: task.client_name ?? undefined }}
                 saving={saving}
                 error={saveError}
                 onSubmit={handleUpdate}

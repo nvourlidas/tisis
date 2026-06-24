@@ -20,7 +20,7 @@ export type TaskFormValues = {
 
 type Props = {
   tenantId: string;
-  initial?: Partial<TaskFormValues> & { id?: string; case_code?: string; case_title?: string };
+  initial?: Partial<TaskFormValues> & { id?: string; case_code?: string; case_title?: string; case_client_name?: string };
   hideCaseField?: boolean;
   hideLinkedTasks?: boolean;
   saving: boolean;
@@ -63,6 +63,38 @@ function courtFromData(d: CourtData | null | undefined): CourtData {
     decision_number: d?.decision_number ?? '',
     decision_date: d?.decision_date ?? '',
   };
+}
+
+function buildDescriptionFromFields(category: TaskCategory | '', legalAct: LegalActData, appointment: AppointmentData, court: CourtData): string {
+  const lines: string[] = [];
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? iso : d.toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+  const fmtDate = (iso: string) => {
+    const d = new Date(iso + 'T00:00:00');
+    return isNaN(d.getTime()) ? iso : d.toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+  if (category === 'legal_act' || category === 'lawsuit') {
+    if (category === 'legal_act' && legalAct.protocol_number) lines.push(`Αρ. Πρωτοκόλου: ${legalAct.protocol_number}`);
+    if (legalAct.creation_date) lines.push(`Ημ. Κατάθεσης: ${fmtDate(legalAct.creation_date)}`);
+    if (legalAct.authority) lines.push(`${category === 'lawsuit' ? 'Αρμόδιο Δικαστήριο' : 'Αρμόδια Αρχή'}: ${legalAct.authority}`);
+    if (legalAct.gak) lines.push(`ΓΑΚ: ${legalAct.gak}`);
+    if (legalAct.eak) lines.push(`ΕΑΚ: ${legalAct.eak}`);
+    const dec = legalAct.decision;
+    if (dec?.number) lines.push(`Αρ. Απόφασης: ${dec.number}`);
+    if (dec?.date) lines.push(`Ημ. Απόφασης: ${fmtDate(dec.date)}`);
+    if (dec?.description) lines.push(dec.description);
+  } else if (category === 'appointment') {
+    if (appointment.start_datetime) lines.push(`Έναρξη: ${fmt(appointment.start_datetime)}`);
+    if (appointment.end_datetime) lines.push(`Λήξη: ${fmt(appointment.end_datetime)}`);
+  } else if (category === 'court') {
+    if (court.start_datetime) lines.push(`Έναρξη: ${fmt(court.start_datetime)}`);
+    if (court.end_datetime) lines.push(`Λήξη: ${fmt(court.end_datetime)}`);
+    if (court.decision_number) lines.push(`Αρ. Απόφασης: ${court.decision_number}`);
+    if (court.decision_date) lines.push(`Ημ. Έκδοσης: ${fmtDate(court.decision_date)}`);
+  }
+  return lines.join('\n');
 }
 
 export function buildExtraData(category: TaskCategory | '', legalAct: LegalActData, appointment: AppointmentData, court: CourtData): LegalActData | AppointmentData | CourtData | null {
@@ -113,27 +145,49 @@ export function taskToFormValues(task: Task): TaskFormValues {
   };
 }
 
+function buildTitlePrefix(caseCode: string | undefined, _clientName: string | undefined, cat: TaskCategory | ''): string {
+  const parts: string[] = [];
+  if (caseCode) parts.push(caseCode);
+  if (cat) parts.push(TASK_CATEGORIES[cat]);
+  return parts.length ? parts.join(' - ') + ' - ' : '';
+}
+
 export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedTasks, saving, error, onSubmit, onCancel, submitLabel = 'Δημιουργία' }: Props) {
-  const [title, setTitle] = useState(initial?.title ?? '');
+  const initPrefix = buildTitlePrefix(initial?.case_code, initial?.case_client_name, initial?.category ?? '');
+  const initBody = (initial?.title ?? '').startsWith(initPrefix)
+    ? (initial?.title ?? '').slice(initPrefix.length)
+    : (initial?.title ?? '');
+  const [titleBody, setTitleBody] = useState(initBody);
+  const [titlePrefix, setTitlePrefix] = useState(initPrefix);
+  const title = titlePrefix + titleBody;
+
+  const initExtra = initial?.extra_data;
+  const initCategory = initial?.category ?? '';
+  const initLegalAct = (initCategory === 'legal_act' || initCategory === 'lawsuit') ? legalActFromData(initExtra as LegalActData) : emptyLegalAct();
+  const initAppointment = initCategory === 'appointment' ? appointmentFromData(initExtra as AppointmentData) : emptyAppointment();
+  const initCourt = initCategory === 'court' ? courtFromData(initExtra as CourtData) : emptyCourt();
   const [description, setDescription] = useState(initial?.description ?? '');
   const [due_date, setDueDate] = useState(initial?.due_date ?? '');
   const [due_time, setDueTime] = useState(initial?.due_time ?? '');
   const [case_id, setCaseId] = useState(initial?.case_id ?? '');
-  const [category, setCategory] = useState<TaskCategory | ''>(initial?.category ?? '');
+  const [category, setCategory] = useState<TaskCategory | ''>(initCategory);
 
-  const initExtra = initial?.extra_data;
-  const [legalAct, setLegalAct] = useState<LegalActData>(
-    (initial?.category === 'legal_act' || initial?.category === 'lawsuit') ? legalActFromData(initExtra as LegalActData) : emptyLegalAct()
-  );
-  const [appointment, setAppointment] = useState<AppointmentData>(
-    initial?.category === 'appointment' ? appointmentFromData(initExtra as AppointmentData) : emptyAppointment()
-  );
-  const [court, setCourt] = useState<CourtData>(
-    initial?.category === 'court' ? courtFromData(initExtra as CourtData) : emptyCourt()
-  );
+  const [legalAct, setLegalAct] = useState<LegalActData>(initLegalAct);
+  const [appointment, setAppointment] = useState<AppointmentData>(initAppointment);
+  const [court, setCourt] = useState<CourtData>(initCourt);
 
   const [hours, setHours] = useState<string>(initial?.hours != null ? String(initial.hours) : '');
   const [rates, setRates] = useState<CategoryRate[]>([]);
+
+  useEffect(() => {
+    setDescription(buildDescriptionFromFields(category, legalAct, appointment, court));
+  }, [
+    category,
+    legalAct.protocol_number, legalAct.creation_date, legalAct.authority, legalAct.gak, legalAct.eak,
+    legalAct.decision?.number, legalAct.decision?.date, legalAct.decision?.description,
+    appointment.start_datetime, appointment.end_datetime,
+    court.start_datetime, court.end_datetime, court.decision_number, court.decision_date,
+  ]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -150,11 +204,11 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
   const [showTaskSearch, setShowTaskSearch] = useState(false);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
 
-  const [selectedCase, setSelectedCase] = useState<{ id: string; code: string; title: string } | null>(
-    initial?.case_id && initial.case_code ? { id: initial.case_id, code: initial.case_code, title: initial.case_title ?? '' } : null
+  const [selectedCase, setSelectedCase] = useState<{ id: string; code: string; title: string; client_name?: string } | null>(
+    initial?.case_code ? { id: initial.case_id ?? '', code: initial.case_code, title: initial.case_title ?? '', client_name: initial.case_client_name } : null
   );
   const [caseQuery, setCaseQuery] = useState('');
-  const [caseOptions, setCaseOptions] = useState<{ id: string; code: string; title: string }[]>([]);
+  const [caseOptions, setCaseOptions] = useState<{ id: string; code: string; title: string; client_name?: string }[]>([]);
   const [searchingCases, setSearchingCases] = useState(false);
   const [showCaseSearch, setShowCaseSearch] = useState(false);
 
@@ -188,15 +242,20 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
     return () => clearTimeout(t);
   }, [taskQuery, tenantId, linkedTasks]);
 
-  const selectCase = (c: { id: string; code: string; title: string }) => {
+  const selectCase = (c: { id: string; code: string; title: string; client_name?: string }) => {
     setSelectedCase(c);
     setCaseId(c.id);
     setShowCaseSearch(false);
     setCaseQuery('');
     setCaseOptions([]);
+    setTitlePrefix(buildTitlePrefix(c.code, c.client_name, category));
   };
 
-  const clearCase = () => { setSelectedCase(null); setCaseId(''); };
+  const clearCase = () => {
+    setSelectedCase(null);
+    setCaseId('');
+    setTitlePrefix(buildTitlePrefix(undefined, undefined, category));
+  };
 
   const setLA = (k: keyof LegalActData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setLegalAct(f => ({ ...f, [k]: e.target.value }));
@@ -205,6 +264,7 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!titleBody.trim() && !titlePrefix) return;
     if (!title.trim()) return;
     onSubmit({
       title, description, due_date, due_time, case_id, category,
@@ -219,18 +279,31 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-xs text-text-secondary mb-1">Τίτλος <span className="text-danger">*</span></label>
-          <input className="input w-full" value={title} onChange={e => setTitle(e.target.value)} required autoFocus />
+          <div className="flex items-center input w-full gap-0 p-0 overflow-hidden">
+            {titlePrefix && (
+              <span className="shrink-0 px-3 py-2 text-sm text-text-secondary bg-white/4 border-r border-border/10 whitespace-nowrap select-none">
+                {titlePrefix}
+              </span>
+            )}
+            <input
+              className="flex-1 bg-transparent px-3 py-2 text-sm outline-none min-w-0"
+              value={titleBody}
+              onChange={e => setTitleBody(e.target.value)}
+              required={!titlePrefix}
+              autoFocus
+            />
+          </div>
         </div>
 
         <div>
           <label className="block text-xs text-text-secondary mb-1">Κατηγορία</label>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setCategory('')}
+            <button type="button" onClick={() => { setCategory(''); setTitlePrefix(buildTitlePrefix(selectedCase?.code, selectedCase?.client_name, '')); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${!category ? 'bg-primary text-white' : 'bg-white/5 text-text-secondary hover:bg-white/10'}`}>
               Καμία
             </button>
             {(Object.keys(TASK_CATEGORIES) as TaskCategory[]).map(cat => (
-              <button key={cat} type="button" onClick={() => setCategory(cat)}
+              <button key={cat} type="button" onClick={() => { setCategory(cat); setTitlePrefix(buildTitlePrefix(selectedCase?.code, selectedCase?.client_name, cat)); }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${category === cat ? 'bg-primary text-white' : 'bg-white/5 text-text-secondary hover:bg-white/10'}`}>
                 {TASK_CATEGORIES[cat]}
               </button>
@@ -488,7 +561,7 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
 
         <div>
           <label className="block text-xs text-text-secondary mb-1">Περιγραφή</label>
-          <textarea className="input w-full resize-none" rows={2} value={description} onChange={e => setDescription(e.target.value)} />
+          <textarea className="input w-full resize-none" rows={3} value={description} onChange={e => setDescription(e.target.value)} />
         </div>
 
         {error && <p className="text-sm text-danger">{error}</p>}
@@ -535,9 +608,11 @@ function NewLinkedTaskModal({ tenantId, defaultCaseId, onCreated, onClose }: {
         title: values.title,
         description: values.description,
         due_date: values.due_date,
+        due_time: values.due_time || undefined,
         case_id: values.case_id || defaultCaseId,
         category: values.category || undefined,
         extra_data: values.extra_data,
+        hours: values.hours,
       });
       onCreated({
         id: result.id,

@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
     const auth = await authenticate(req)
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
-    const { title, description, due_date, due_time, case_id, contact_id, source_call_id, category, extra_data, fee, expenses, linked_task_ids } = await req.json()
+    const { title, description, due_date, due_time, case_id, contact_id, source_call_id, category, extra_data, fee, expenses, hours, linked_task_ids } = await req.json()
     if (!title?.trim()) return json({ error: 'title is required' }, 400)
     const { data, error } = await supabase
       .from('tasks')
@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
         extra_data: extra_data || null,
         fee: fee ?? null,
         expenses: expenses?.length ? expenses : null,
+        hours: hours ?? null,
         status: 'open',
       })
       .select().single()

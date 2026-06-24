@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Check, RotateCcw, X, ChevronLeft, ChevronRight, Pencil, Search, Trash2, List, CalendarDays, Clock, Link2 } from 'lucide-react';
 import { fetchCaseTasks, completeTask, reopenTask } from '../caseUtils';
-import { updateTask, deleteTask, extraDataToDescription, fetchCategoryRates, calcTaskAmount, TASK_CATEGORIES, searchFullTasks, type Task, type TaskCategory, type CategoryRate, type LegalActData, type AppointmentData } from '../../Tasks/taskUtils';
+import { updateTask, deleteTask, fetchCategoryRates, calcTaskAmount, TASK_CATEGORIES, searchFullTasks, type Task, type TaskCategory, type CategoryRate, type LegalActData, type AppointmentData } from '../../Tasks/taskUtils';
 import { supabase } from '../../../lib/supabase';
 import { formatDate } from '../../../lib/dateUtils';
 import TaskForm, { type TaskFormValues } from '../../Tasks/TaskForm';
@@ -50,12 +50,12 @@ const CATEGORY_COLORS: Record<TaskCategory, string> = {
   extrajudicial:'bg-purple-500/15 text-purple-500',
   appointment:  'bg-teal-500/15 text-teal-500',
   file_work:    'bg-amber-500/15 text-amber-500',
-  court:        'bg-red-500/15 text-red-500',
+  court:        'bg-rose-600 text-white font-semibold',
 };
 
-type Props = { caseId: string; tenantId?: string };
+type Props = { caseId: string; tenantId?: string; caseCode?: string; clientName?: string };
 
-export default function CaseTasks({ caseId, tenantId = '' }: Props) {
+export default function CaseTasks({ caseId, tenantId = '', caseCode, clientName }: Props) {
   const navigate = useNavigate();
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
@@ -116,7 +116,7 @@ export default function CaseTasks({ caseId, tenantId = '' }: Props) {
         body: {
           case_id: caseId,
           title: values.title,
-          description: extraDataToDescription(values.category || null, values.extra_data) ?? values.description,
+          description: values.description,
           due_date: values.due_date,
           category: values.category || null,
           extra_data: values.extra_data,
@@ -141,7 +141,7 @@ export default function CaseTasks({ caseId, tenantId = '' }: Props) {
       await updateTask({
         id: editingTask.id,
         title: values.title,
-        description: extraDataToDescription(values.category || null, values.extra_data) ?? values.description,
+        description: values.description,
         due_date: values.due_date,
         case_id: values.case_id || caseId,
         category: values.category || undefined,
@@ -212,6 +212,13 @@ export default function CaseTasks({ caseId, tenantId = '' }: Props) {
       if (!map.has(t.due_date)) map.set(t.due_date, []);
       map.get(t.due_date)!.push(t);
     }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        if (a.category === 'court' && b.category !== 'court') return -1;
+        if (b.category === 'court' && a.category !== 'court') return 1;
+        return (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99');
+      });
+    }
     return map;
   }, [filteredTasks]);
 
@@ -258,7 +265,7 @@ export default function CaseTasks({ caseId, tenantId = '' }: Props) {
     title: t.title,
     description: t.description ?? '',
     due_date: t.due_date ?? '',
-    due_time: '',
+    due_time: t.due_time ?? '',
     case_id: '',
     category: t.category ?? '',
     extra_data: t.extra_data ?? null,
@@ -326,6 +333,7 @@ export default function CaseTasks({ caseId, tenantId = '' }: Props) {
           <TaskForm
             tenantId=""
             hideCaseField
+            initial={{ case_code: caseCode, case_client_name: clientName }}
             saving={creating}
             error={createError}
             onSubmit={handleCreate}
@@ -430,6 +438,7 @@ export default function CaseTasks({ caseId, tenantId = '' }: Props) {
                           const done = task.status === 'done';
                           return (
                             <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate w-full',
+                              task.category === 'court' ? CATEGORY_COLORS['court'] :
                               done ? 'bg-green-500/10 text-green-400 opacity-60' :
                               overdue ? 'bg-orange-500/15 text-orange-400' :
                               task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
@@ -490,6 +499,7 @@ export default function CaseTasks({ caseId, tenantId = '' }: Props) {
                           const done = task.status === 'done';
                           return (
                             <span key={task.id} className={['text-xs leading-tight px-1.5 py-0.5 rounded truncate block',
+                              task.category === 'court' ? CATEGORY_COLORS['court'] :
                               done ? 'bg-green-500/10 text-green-400 opacity-60' :
                               overdue ? 'bg-orange-500/15 text-orange-400' :
                               task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
@@ -616,6 +626,7 @@ function EditTaskModal({ task, saving, error, initialValues, onSubmit, onClose }
         </div>
         <div className="p-6">
           <TaskForm
+            key={task.id}
             tenantId=""
             hideCaseField
             initial={initialValues}
@@ -648,7 +659,7 @@ function TaskRow({ task, todayStr, toggling, rates, onToggle, onEdit, onDelete, 
   const dueColor = taskDueColor(task.due_date, todayStr, task.status);
 
   return (
-    <div className={`rounded-xl border px-4 py-3 space-y-2 ${overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
+    <div className={`rounded-xl border px-4 py-3 space-y-2 ${task.category === 'court' ? 'border-rose-500/40 bg-rose-500/8' : overdue ? 'border-orange-500/20 bg-orange-500/5' : done ? 'border-green-500/20 bg-green-500/5 opacity-70' : 'border-border/10 bg-white/2'}`}>
       <div className="flex items-start gap-3">
         <button onClick={() => onToggle(task)} disabled={toggling === task.id}
           className={['mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer',

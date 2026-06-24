@@ -188,13 +188,14 @@ export async function fetchCaseCalls(caseId: string): Promise<CaseCall[]> {
 export async function fetchCaseTasks(caseId: string): Promise<CaseTask[]> {
   const { data, error } = await supabase
     .from('tasks')
-    .select('id, title, description, due_date, status, completed_at, created_at, category, extra_data, hours, fee_id')
+    .select('id, title, description, due_date, due_time, status, completed_at, created_at, category, extra_data, hours, fee_id')
     .eq('case_id', caseId)
     .order('due_date', { ascending: true, nullsFirst: false });
   if (error) throw error;
   return (data ?? []).map((r: any) => ({
     ...r,
     due_date: r.due_date ? r.due_date.slice(0, 10) : null,
+    due_time: r.due_time ?? null,
     category: r.category ?? null,
     extra_data: r.extra_data ?? null,
     hours: r.hours ?? null,

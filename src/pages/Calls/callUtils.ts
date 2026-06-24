@@ -146,6 +146,7 @@ export type CallUpdateData = {
   direction?: import('./types').CallDirection;
   description?: string;
   follow_up_required?: boolean;
+  follow_up_done?: boolean;
   follow_up_notes?: string;
   case_id?: string | null;
   contact_id?: string | null;
@@ -171,7 +172,7 @@ export async function searchCallsForLinking(tenantId: string, query: string): Pr
 }
 
 export async function updateCall(callId: string, data: CallUpdateData): Promise<void> {
-  const { error } = await supabase.from('calls').update(data).eq('id', callId);
+  const { error } = await supabase.functions.invoke('call-update', { body: { id: callId, ...data } });
   if (error) throw error;
 }
 
@@ -203,7 +204,28 @@ export async function fetchCallsByContact(contactId: string): Promise<Call[]> {
   }));
 }
 
+function callToAthens(isoString: string): { date: string; time: string } {
+  const d = new Date(isoString);
+  const date = d.toLocaleDateString('en-CA', { timeZone: 'Europe/Athens' });
+  const time = d.toLocaleTimeString('en-GB', { timeZone: 'Europe/Athens', hour: '2-digit', minute: '2-digit', hour12: false });
+  return { date, time };
+}
+
+export async function syncCallToCalendar(call: { id: string; caller_name: string | null; phone: string | null; direction: string; description: string | null; created_at: string }): Promise<void> {
+  const dirLabel = call.direction === 'inperson' ? 'Συνάντηση' : call.direction === 'email' ? 'Email' : 'Κλήση';
+  const calTitle = `${dirLabel}: ${call.caller_name || call.phone || 'Άγνωστος'}`;
+  const { date, time } = callToAthens(call.created_at);
+  const { error } = await supabase.functions.invoke('google-calendar-sync', {
+    body: { action: 'create', callId: call.id, title: calTitle, description: call.description, due_date: date, due_time: time },
+  });
+  if (error) throw error;
+}
+
 export async function deleteCall(callId: string): Promise<void> {
+  const { data } = await supabase.from('calls').select('google_event_id').eq('id', callId).single();
+  if (data?.google_event_id) {
+    await supabase.functions.invoke('google-calendar-sync', { body: { action: 'delete', google_event_id: data.google_event_id } });
+  }
   const { error } = await supabase.from('calls').delete().eq('id', callId);
   if (error) throw error;
 }

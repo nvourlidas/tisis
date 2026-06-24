@@ -2,14 +2,14 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, RotateCcw, AlertCircle,
-  X, ChevronLeft, ChevronRight, Pencil, RefreshCw, Link2, Search, Phone, Users, Trash2,
+  X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, RefreshCw, Link2, Search, Phone, Users, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { supabase } from '../../lib/supabase';
 import {
   fetchTasksForMonth, fetchTaskCounts, fetchDashboardOpenTasks, completeTask, reopenTask, createTask, updateTask, deleteTask,
   searchFullTasks,
-  TASK_CATEGORIES, extraDataToDescription, type Task, type TaskCategory, type LegalActData, type AppointmentData, type CourtData,
+  TASK_CATEGORIES, type Task, type TaskCategory, type LegalActData, type AppointmentData, type CourtData,
 } from './taskUtils';
 import { fetchCallsForMonth, deleteCall, searchCalls } from '../Calls/callUtils';
 import EditCallModal from '../Calls/modals/EditCallModal';
@@ -70,7 +70,7 @@ const CATEGORY_COLORS: Record<TaskCategory, string> = {
   extrajudicial: 'bg-purple-500/15 text-purple-500',
   appointment: 'bg-teal-500/15 text-teal-500',
   file_work: 'bg-amber-500/15 text-amber-500',
-  court: 'bg-red-500/15 text-red-500',
+  court: 'bg-black/70 text-white font-semibold',
 };
 
 export default function Tasks() {
@@ -109,6 +109,7 @@ export default function Tasks() {
   const [searching, setSearching] = useState(false);
   const [searchYear, setSearchYear] = useState<number | null>(null);
   const [searchMonth, setSearchMonth] = useState<number | null>(null);
+  const [searchSortDesc, setSearchSortDesc] = useState(true);
 
   useEffect(() => {
     if (!searchQuery.trim() || !tenantId) { setSearchResults([]); setSearchCallResults([]); return; }
@@ -178,7 +179,7 @@ export default function Tasks() {
     try {
       await createTask(tenantId, {
         title: values.title,
-        description: [extraDataToDescription(values.category || null, values.extra_data), values.description].filter(Boolean).join('\n') || '',
+        description: values.description,
         due_date: values.due_date,
         due_time: values.due_time || undefined,
         case_id: values.case_id,
@@ -204,7 +205,7 @@ export default function Tasks() {
       await updateTask({
         id: editingTask.id,
         title: values.title,
-        description: [extraDataToDescription(values.category || null, values.extra_data), values.description].filter(Boolean).join('\n') || '',
+        description: values.description,
         due_date: values.due_date,
         due_time: values.due_time || undefined,
         case_id: values.case_id || null,
@@ -285,7 +286,11 @@ export default function Tasks() {
       if (!map.has(t.due_date)) map.set(t.due_date, []);
       map.get(t.due_date)!.push(t);
     }
-    for (const arr of map.values()) arr.sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99'));
+    for (const arr of map.values()) arr.sort((a, b) => {
+      if (a.category === 'court' && b.category !== 'court') return -1;
+      if (b.category === 'court' && a.category !== 'court') return 1;
+      return (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99');
+    });
     return map;
   }, [filteredTasks]);
 
@@ -315,6 +320,10 @@ export default function Tasks() {
     }
     for (const arr of map.values()) {
       arr.sort((a, b) => {
+        const aIsCourt = a.type === 'task' && (a.item as Task).category === 'court';
+        const bIsCourt = b.type === 'task' && (b.item as Task).category === 'court';
+        if (aIsCourt && !bIsCourt) return -1;
+        if (bIsCourt && !aIsCourt) return 1;
         const ta = a.type === 'task' ? (a.item.due_time ?? '99:99') : new Date(a.item.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toTimeString().slice(0, 5);
         const tb = b.type === 'task' ? (b.item.due_time ?? '99:99') : new Date(b.item.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toTimeString().slice(0, 5);
         return ta.localeCompare(tb);
@@ -562,6 +571,13 @@ export default function Tasks() {
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
+            <button
+              onClick={() => setSearchSortDesc(v => !v)}
+              className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/15 bg-secondary-background text-xs text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+            >
+              {searchSortDesc ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+              {searchSortDesc ? 'Νεότερα πρώτα' : 'Παλαιότερα πρώτα'}
+            </button>
           </div>
           {searching ? (
             <div className="flex items-center gap-3 text-sm text-text-secondary animate-pulse-soft py-8">
@@ -598,6 +614,9 @@ export default function Tasks() {
               }
               return true;
             });
+            const sortMul = searchSortDesc ? -1 : 1;
+            filtered.sort((a, b) => sortMul * (a.due_date ?? '').localeCompare(b.due_date ?? ''));
+            filteredCalls.sort((a, b) => sortMul * a.created_at.localeCompare(b.created_at));
             const total = filtered.length + filteredCalls.length;
             return total === 0 ? (
               <p className="text-sm text-text-secondary py-8 text-center">Δεν βρέθηκαν αποτελέσματα.</p>
@@ -693,13 +712,14 @@ export default function Tasks() {
                             const done = task.status === 'done';
                             const color = taskDueColor(task.due_date, todayStr, task.status);
                             const label = (task.case_code || task.category)
-                              ? [task.case_code, task.client_name, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                              ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null, task.client_name].filter(Boolean).join(' - ')
                               : task.title;
                             return (
                               <div key={task.id} className="relative group/chip w-full">
                                 <span
                                   onClick={e => { e.stopPropagation(); navigate(`/tasks/${task.id}`); }}
                                   className={['text-[14px] leading-snug px-2 py-1.5 rounded-md truncate w-full block cursor-pointer hover:brightness-125 transition-all',
+                                    task.category === 'court' ? CATEGORY_COLORS['court'] :
                                     done ? 'bg-green-500/15 text-green-700 dark:text-green-400 opacity-75' :
                                     color ? DUE_COLOR_CHIP[color] :
                                     task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
@@ -722,7 +742,7 @@ export default function Tasks() {
                             );
                           } else {
                             const call = entry.item;
-                            const callTime = new Date(call.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+                            const callTime = new Date(call.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', hour12: false });
                             const dirLabel = call.direction === 'phone' ? 'Τηλ' : call.direction === 'inperson' ? 'Αυτοπρ' : 'Email';
                             const chipText = call.case_code
                               ? `${call.case_code} · ${dirLabel}`
@@ -814,12 +834,13 @@ export default function Tasks() {
                             const done = task.status === 'done';
                             const color = taskDueColor(task.due_date, todayStr, task.status);
                             const label = (task.case_code || task.category)
-                              ? [task.case_code, task.client_name, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                              ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null, task.client_name].filter(Boolean).join(' - ')
                               : task.title;
                             return (
                               <span key={task.id}
                                 onClick={e => { e.stopPropagation(); navigate(`/tasks/${task.id}`); }}
                                 className={['text-[11px] leading-snug px-2 py-1.5 rounded-md truncate block cursor-pointer hover:brightness-125 transition-all',
+                                  task.category === 'court' ? CATEGORY_COLORS['court'] :
                                   done ? 'bg-green-500/15 text-green-700 dark:text-green-400 opacity-75' :
                                   color ? DUE_COLOR_CHIP[color] :
                                   task.category ? CATEGORY_COLORS[task.category] : 'bg-primary/15 text-primary'].join(' ')}>
@@ -828,7 +849,7 @@ export default function Tasks() {
                             );
                           } else {
                             const call = entry.item;
-                            const callTime = new Date(call.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+                            const callTime = new Date(call.created_at.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '')).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', hour12: false });
                             const dirLabel = call.direction === 'phone' ? 'Τηλ' : call.direction === 'inperson' ? 'Αυτοπρ' : 'Email';
                             const chipText = call.case_code
                               ? `${call.case_code} · ${dirLabel}`
@@ -950,6 +971,7 @@ function EditTaskModal({ task, tenantId, saving, error, onSubmit, onClose }: {
         </div>
         <div className="p-6">
           <TaskForm
+            key={task.id}
             tenantId={tenantId}
             initial={{ ...taskToFormValues(task), id: task.id, case_code: task.case_code ?? undefined, case_title: task.case_title ?? undefined }}
             saving={saving}
@@ -1034,7 +1056,7 @@ function TaskRow({ task, todayStr, toggling, onToggle, onEdit, onDelete, onNavig
   const hasFinancials = task.fee != null || (task.expenses?.length ?? 0) > 0;
 
   return (
-    <div className={`rounded-xl border px-4 py-3 space-y-2 ${color ? DUE_COLOR_CARD[color] : done ? 'border-green-600/20 bg-green-500/8 opacity-80' : 'border-border/10 bg-white/2'}`}>
+    <div className={`rounded-xl border px-4 py-3 space-y-2 ${task.category === 'court' ? 'border-rose-500/40 bg-rose-500/8' : color ? DUE_COLOR_CARD[color] : done ? 'border-green-600/20 bg-green-500/8 opacity-80' : 'border-border/10 bg-white/2'}`}>
       <div className="flex items-start gap-3">
         <button
           onClick={() => onToggle(task)}
