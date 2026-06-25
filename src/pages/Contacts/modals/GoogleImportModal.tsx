@@ -8,7 +8,12 @@ type GoogleContact = {
   name: string;
   phone: string | null;
   phone2: string | null;
+  phone3: string | null;
+  phone4: string | null;
   email: string | null;
+  email2: string | null;
+  email3: string | null;
+  email4: string | null;
   organization: string | null;
   job_title: string | null;
   website: string | null;
@@ -58,7 +63,12 @@ async function fetchGoogleContacts(token: string): Promise<GoogleContact[]> {
         name,
         phone: phones[0] ?? null,
         phone2: phones[1] ?? null,
+        phone3: phones[2] ?? null,
+        phone4: phones[3] ?? null,
         email: emails[0] ?? null,
+        email2: emails[1] ?? null,
+        email3: emails[2] ?? null,
+        email4: emails[3] ?? null,
         organization: p.organizations?.[0]?.name?.trim() ?? null,
         job_title: p.organizations?.[0]?.title?.trim() ?? null,
         website: p.urls?.[0]?.value?.trim() ?? null,
@@ -154,21 +164,26 @@ export default function GoogleImportModal({ open, onClose, onImported }: Props) 
     const byEmail = new Map((existing ?? []).filter(c => c.email).map(c => [c.email, c]));
 
     const toInsert: typeof toImport = [];
-    const toBackfill: Array<{ id: string; resourceName: string; phone2: string | null; birthdate: string | null }> = [];
+    const toBackfill: Array<{ id: string; c: GoogleContact }> = [];
 
     for (const c of toImport) {
       const match = (c.phone && byPhone.get(c.phone)) || (c.email && byEmail.get(c.email));
       if (match) {
-        if (!match.google_contact_id) toBackfill.push({ id: match.id, resourceName: c.resourceName, phone2: c.phone2, birthdate: c.birthdate });
+        if (!match.google_contact_id) toBackfill.push({ id: match.id, c });
       } else {
         toInsert.push(c);
       }
     }
 
-    for (const { id, resourceName, phone2, birthdate } of toBackfill) {
-      const update: Record<string, string | null> = { google_contact_id: resourceName };
-      if (phone2) update.phone2 = phone2;
-      if (birthdate) update.birthdate = birthdate;
+    for (const { id, c } of toBackfill) {
+      const update: Record<string, string | null> = { google_contact_id: c.resourceName };
+      if (c.phone2) update.phone2 = c.phone2;
+      if (c.phone3) update.phone3 = c.phone3;
+      if (c.phone4) update.phone4 = c.phone4;
+      if (c.email2) update.email2 = c.email2;
+      if (c.email3) update.email3 = c.email3;
+      if (c.email4) update.email4 = c.email4;
+      if (c.birthdate) update.birthdate = c.birthdate;
       await supabase.from('contacts').update(update).eq('id', id);
     }
 
@@ -179,7 +194,12 @@ export default function GoogleImportModal({ open, onClose, onImported }: Props) 
       name: c.name,
       phone: c.phone,
       phone2: c.phone2,
+      phone3: c.phone3,
+      phone4: c.phone4,
       email: c.email,
+      email2: c.email2,
+      email3: c.email3,
+      email4: c.email4,
       organization: c.organization,
       job_title: c.job_title,
       website: c.website,
@@ -293,7 +313,7 @@ export default function GoogleImportModal({ open, onClose, onImported }: Props) 
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-text-primary">{c.name}</p>
                     <p className="text-xs text-text-secondary truncate">
-                      {[c.phone, c.email].filter(Boolean).join(' · ') || '—'}
+                      {[c.phone, c.phone2, c.phone3, c.phone4, c.email, c.email2, c.email3, c.email4].filter(Boolean).join(' · ') || '—'}
                     </p>
                   </div>
                 </label>

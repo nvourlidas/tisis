@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import type { ContactFormData } from '../types';
 import { mergeNotesWithAutoBlock } from '../contactUtils';
 
@@ -13,14 +13,20 @@ type Props = {
 };
 
 const empty: ContactFormData = {
-  name: '', phone: '', phone2: '', email: '', notes: '',
+  name: '', phone: '', phone2: '', phone3: '', phone4: '',
+  email: '', email2: '', email3: '', email4: '', notes: '',
   vat: '', address: '', job_title: '', organization: '', website: '',
   father_name: '', mother_name: '', birthdate: '',
   amka: '', iban: '', at: '', taxis_username: '', taxis_password: '',
 };
 
+const PHONE_KEYS = ['phone', 'phone2', 'phone3', 'phone4'] as const;
+const EMAIL_KEYS = ['email', 'email2', 'email3', 'email4'] as const;
+
 export default function NewContactModal({ open, onClose, onSubmit, initialPhone, zIndex = 'z-50' }: Props) {
   const [form, setForm] = useState<ContactFormData>(() => ({ ...empty, phone: initialPhone ?? '' }));
+  const [phoneSlots, setPhoneSlots] = useState(1);
+  const [emailSlots, setEmailSlots] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +44,8 @@ export default function NewContactModal({ open, onClose, onSubmit, initialPhone,
       const notes = mergeNotesWithAutoBlock(form.notes, { vat, father_name, mother_name, amka, iban, at, taxis_username, taxis_password });
       await onSubmit({ ...form, notes });
       setForm(empty);
+      setPhoneSlots(1);
+      setEmailSlots(1);
       onClose();
     } catch (err: any) {
       setError(err?.message ?? 'Αποτυχία δημιουργίας επαφής.');
@@ -60,19 +68,31 @@ export default function NewContactModal({ open, onClose, onSubmit, initialPhone,
             <label className="block text-sm text-text-secondary mb-1">Όνομα <span className="text-danger">*</span></label>
             <input className="input w-full" value={form.name} onChange={set('name')} required autoFocus />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">Τηλέφωνο</label>
-              <input className="input w-full" value={form.phone} onChange={set('phone')} />
-            </div>
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">Τηλέφωνο 2</label>
-              <input className="input w-full" value={form.phone2} onChange={set('phone2')} />
-            </div>
+          <div className="space-y-2">
+            {PHONE_KEYS.slice(0, phoneSlots).map((key, i) => (
+              <div key={key}>
+                <label className="block text-sm text-text-secondary mb-1">{i === 0 ? 'Τηλέφωνο' : `Τηλέφωνο ${i + 1}`}</label>
+                <input className="input w-full" value={form[key]} onChange={set(key)} />
+              </div>
+            ))}
+            {phoneSlots < 4 && (
+              <button type="button" onClick={() => setPhoneSlots(s => s + 1)} className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-primary transition-colors cursor-pointer">
+                <Plus className="h-3.5 w-3.5" /> Προσθήκη τηλεφώνου
+              </button>
+            )}
           </div>
-          <div>
-            <label className="block text-sm text-text-secondary mb-1">Email</label>
-            <input className="input w-full" type="email" value={form.email} onChange={set('email')} />
+          <div className="space-y-2">
+            {EMAIL_KEYS.slice(0, emailSlots).map((key, i) => (
+              <div key={key}>
+                <label className="block text-sm text-text-secondary mb-1">{i === 0 ? 'Email' : `Email ${i + 1}`}</label>
+                <input className="input w-full" type="email" value={form[key]} onChange={set(key)} />
+              </div>
+            ))}
+            {emailSlots < 4 && (
+              <button type="button" onClick={() => setEmailSlots(s => s + 1)} className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-primary transition-colors cursor-pointer">
+                <Plus className="h-3.5 w-3.5" /> Προσθήκη email
+              </button>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

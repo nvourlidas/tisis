@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
     const {
-      name, phone, phone2, email, notes, vat, address,
+      name, phone, phone2, phone3, phone4, email, email2, email3, email4, notes, vat, address,
       job_title, organization, website,
       father_name, mother_name, birthdate, amka, iban, at, taxis_username, taxis_password,
     } = await req.json()
@@ -20,7 +20,12 @@ Deno.serve(async (req) => {
         name: name.trim(),
         phone: phone || null,
         phone2: phone2 || null,
+        phone3: phone3 || null,
+        phone4: phone4 || null,
         email: email || null,
+        email2: email2 || null,
+        email3: email3 || null,
+        email4: email4 || null,
         notes: notes || null,
         vat: vat || null,
         address: address || null,
@@ -53,7 +58,12 @@ Deno.serve(async (req) => {
           name: data.name,
           phone: data.phone,
           phone2: data.phone2,
+          phone3: data.phone3,
+          phone4: data.phone4,
           email: data.email,
+          email2: data.email2,
+          email3: data.email3,
+          email4: data.email4,
           organization: data.organization,
           job_title: data.job_title,
           website: data.website,

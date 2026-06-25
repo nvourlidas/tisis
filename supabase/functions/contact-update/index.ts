@@ -1,5 +1,13 @@
 import { corsHeaders, json, authenticate } from '../_shared/auth.ts'
 
+const SHARED_FIELDS = [
+  'name', 'phone', 'phone2', 'phone3', 'phone4',
+  'email', 'email2', 'email3', 'email4',
+  'vat', 'address', 'job_title', 'organization', 'website', 'notes',
+  'father_name', 'mother_name', 'birthdate', 'amka', 'iban', 'at',
+  'taxis_username', 'taxis_password',
+]
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
@@ -8,7 +16,7 @@ Deno.serve(async (req) => {
     const { tenantId, supabase } = auth
     const {
       id,
-      name, phone, phone2, email, notes, vat, address,
+      name, phone, phone2, phone3, phone4, email, email2, email3, email4, notes, vat, address,
       job_title, organization, website,
       father_name, mother_name, birthdate, amka, iban, at, taxis_username, taxis_password,
     } = await req.json()
@@ -28,7 +36,12 @@ Deno.serve(async (req) => {
         name: name.trim(),
         phone: phone || null,
         phone2: phone2 || null,
+        phone3: phone3 || null,
+        phone4: phone4 || null,
         email: email || null,
+        email2: email2 || null,
+        email3: email3 || null,
+        email4: email4 || null,
         notes: notes || null,
         vat: vat || null,
         address: address || null,
@@ -48,6 +61,19 @@ Deno.serve(async (req) => {
       .eq('tenant_id', tenantId)
     if (error) return json({ error: error.message }, 400)
 
+    // Sync linked client if one exists
+    const patch: Record<string, unknown> = {}
+    for (const k of SHARED_FIELDS) {
+      const val = { name: name.trim(), phone, phone2, phone3, phone4, email, email2, email3, email4, notes, vat, address, job_title, organization, website, father_name, mother_name, birthdate, amka, iban, at, taxis_username, taxis_password }[k]
+      patch[k] = val || null
+    }
+    patch['name'] = name.trim()
+    await supabase
+      .from('clients')
+      .update(patch)
+      .eq('contact_id', id)
+      .eq('tenant_id', tenantId)
+
     // Await Google sync so it completes before the function exits
     try {
       const authHeader = req.headers.get('Authorization')!
@@ -60,7 +86,12 @@ Deno.serve(async (req) => {
           name: name.trim(),
           phone: phone || null,
           phone2: phone2 || null,
+          phone3: phone3 || null,
+          phone4: phone4 || null,
           email: email || null,
+          email2: email2 || null,
+          email3: email3 || null,
+          email4: email4 || null,
           organization: organization || null,
           job_title: job_title || null,
           website: website || null,

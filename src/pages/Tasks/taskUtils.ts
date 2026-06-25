@@ -342,6 +342,30 @@ export async function searchTasks(tenantId: string, query: string, excludeId?: s
   }));
 }
 
+export async function fetchLinkedTasksFull(taskId: string): Promise<Task[]> {
+  const [fwd, rev] = await Promise.all([
+    supabase
+      .from('task_links')
+      .select('linked_task:tasks!task_links_linked_task_id_fkey(*, cases(code, title, clients(name)))')
+      .eq('task_id', taskId),
+    supabase
+      .from('task_links')
+      .select('task:tasks!task_links_task_id_fkey(*, cases(code, title, clients(name)))')
+      .eq('linked_task_id', taskId),
+  ]);
+  const seen = new Set<string>();
+  const results: Task[] = [];
+  for (const r of fwd.data ?? []) {
+    const t = mapTask(r.linked_task);
+    if (!seen.has(t.id)) { seen.add(t.id); results.push(t); }
+  }
+  for (const r of rev.data ?? []) {
+    const t = mapTask(r.task);
+    if (!seen.has(t.id)) { seen.add(t.id); results.push(t); }
+  }
+  return results;
+}
+
 export async function fetchLinkedTasks(taskId: string): Promise<LinkedTask[]> {
   const [fwd, rev] = await Promise.all([
     supabase
@@ -382,6 +406,7 @@ export async function createTask(_tenantId: string, form: {
   expenses?: TaskExpense[] | null;
   hours?: number | null;
   linked_task_ids?: string[];
+  source_call_id?: string;
 }): Promise<{ id: string }> {
   const { data, error } = await supabase.functions.invoke('task-create', { body: form });
   if (error) throw error;

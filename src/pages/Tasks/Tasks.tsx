@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, RotateCcw, AlertCircle,
-  X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, RefreshCw, Link2, Search, Phone, Users, Trash2,
+  X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, RefreshCw, Link2, Search, Phone, Users, Trash2, Mail,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { supabase } from '../../lib/supabase';
@@ -752,6 +752,7 @@ export default function Tasks() {
                                 <span
                                   onClick={e => { e.stopPropagation(); navigate(`/calls/${call.id}`); }}
                                   className={['text-[14px] leading-snug px-2 py-1.5 rounded-md truncate w-full block cursor-pointer hover:brightness-125 transition-all',
+                                    call.follow_up_required && !call.follow_up_done ? 'bg-red-500/15 text-red-500' :
                                     call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
                                   <span className="opacity-70 mr-1">{callTime}</span>{chipText}
                                 </span>
@@ -858,6 +859,7 @@ export default function Tasks() {
                               <span key={call.id}
                                 onClick={e => { e.stopPropagation(); navigate(`/calls/${call.id}`); }}
                                 className={['text-[11px] leading-snug px-2 py-1.5 rounded-md truncate block cursor-pointer hover:brightness-125 transition-all',
+                                  call.follow_up_required && !call.follow_up_done ? 'bg-red-500/15 text-red-500' :
                                   call.direction === 'phone' ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'].join(' ')}>
                                 <span className="opacity-70 mr-1">{callTime}</span>{chipText}
                               </span>
@@ -995,11 +997,12 @@ function CallRow({ call, onNavigate, onEdit, onDelete }: {
   onDelete: (c: Call) => void;
 }) {
   const isPhone = call.direction === 'phone';
+  const needsFollowUp = call.follow_up_required && !call.follow_up_done;
   return (
-    <div className={`rounded-xl border px-4 py-3 space-y-1 group ${isPhone ? 'border-teal-500/20 bg-teal-500/5' : 'border-sky-500/20 bg-sky-500/5'}`}>
+    <div className={`rounded-xl border px-4 py-3 space-y-1 group ${needsFollowUp ? 'border-red-500/20 bg-red-500/5' : isPhone ? 'border-teal-500/20 bg-teal-500/5' : 'border-sky-500/20 bg-sky-500/5'}`}>
       <div className="flex items-start gap-3">
-        <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${isPhone ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'}`}>
-          {isPhone ? <Phone className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
+        <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${needsFollowUp ? 'bg-red-500/10 text-red-500' : isPhone ? 'bg-teal-500/10 text-teal-500' : 'bg-sky-500/10 text-sky-500'}`}>
+          {isPhone ? <Phone className="h-3.5 w-3.5" /> : call.direction === 'email' ? <Mail className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-text-primary">{call.caller_name ?? call.phone ?? 'Άγνωστος'}</p>
@@ -1013,8 +1016,8 @@ function CallRow({ call, onNavigate, onEdit, onDelete }: {
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isPhone ? 'bg-teal-500/15 text-teal-500' : 'bg-sky-500/15 text-sky-500'}`}>
-            {isPhone ? 'Τηλέφωνο' : 'Αυτοπρόσωπα'}
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${needsFollowUp ? 'bg-red-500/15 text-red-500' : isPhone ? 'bg-teal-500/15 text-teal-500' : 'bg-sky-500/15 text-sky-500'}`}>
+            {needsFollowUp ? 'Follow-up' : isPhone ? 'Τηλέφωνο' : call.direction === 'email' ? 'Email' : 'Αυτοπρόσωπα'}
           </span>
           <div className="flex items-center gap-0.5">
             <button

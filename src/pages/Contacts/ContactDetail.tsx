@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Mail, FileText, MapPin, Pencil, Check, X,
   UserCheck, ExternalLink, Trash2, Users, CalendarDays, ShieldCheck,
-  CreditCard, KeyRound, RotateCcw, Briefcase, Building2, Globe, PhoneIncoming, PhoneCall, Plus, Link2,
+  CreditCard, KeyRound, RotateCcw, Briefcase, Building2, Globe, PhoneIncoming, PhoneCall, Plus, Link2, PlusCircle,
 } from 'lucide-react';
 import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
@@ -38,7 +38,12 @@ type FieldMeta = { icon: React.ReactNode; color: string; bg: string };
 const FIELD_META: Record<string, FieldMeta> = {
   phone:               { icon: <Phone className="h-4 w-4" />,        color: 'text-blue-500',   bg: 'bg-blue-500/10' },
   phone2:              { icon: <Phone className="h-4 w-4" />,        color: 'text-blue-400',   bg: 'bg-blue-400/10' },
+  phone3:              { icon: <Phone className="h-4 w-4" />,        color: 'text-blue-300',   bg: 'bg-blue-300/10' },
+  phone4:              { icon: <Phone className="h-4 w-4" />,        color: 'text-blue-200',   bg: 'bg-blue-200/10' },
   email:               { icon: <Mail className="h-4 w-4" />,         color: 'text-purple-500', bg: 'bg-purple-500/10' },
+  email2:              { icon: <Mail className="h-4 w-4" />,         color: 'text-purple-400', bg: 'bg-purple-400/10' },
+  email3:              { icon: <Mail className="h-4 w-4" />,         color: 'text-purple-300', bg: 'bg-purple-300/10' },
+  email4:              { icon: <Mail className="h-4 w-4" />,         color: 'text-purple-200', bg: 'bg-purple-200/10' },
   address:             { icon: <MapPin className="h-4 w-4" />,       color: 'text-green-500',  bg: 'bg-green-500/10' },
   vat:                 { icon: <FileText className="h-4 w-4" />,     color: 'text-orange-500', bg: 'bg-orange-500/10' },
   job_title:           { icon: <Briefcase className="h-4 w-4" />,   color: 'text-teal-500',   bg: 'bg-teal-500/10' },
@@ -74,6 +79,8 @@ export default function ContactDetail() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Contact>>({});
+  const [phoneSlots, setPhoneSlots] = useState(1);
+  const [emailSlots, setEmailSlots] = useState(1);
   const [saving, setSaving] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -93,7 +100,17 @@ export default function ContactDetail() {
       .finally(() => setLoading(false));
   }, [id, tenantId]);
 
-  const startEdit = () => { setForm(contact ?? {}); setEditing(true); setError(null); };
+  const startEdit = () => {
+    if (!contact) return;
+    const c = contact;
+    setForm(c);
+    const phones = [c.phone, c.phone2, c.phone3, c.phone4];
+    const emails = [c.email, c.email2, c.email3, c.email4];
+    setPhoneSlots(Math.max(1, phones.filter(Boolean).length));
+    setEmailSlots(Math.max(1, emails.filter(Boolean).length));
+    setEditing(true);
+    setError(null);
+  };
   const cancelEdit = () => { setEditing(false); setError(null); };
 
   const saveEdit = async () => {
@@ -107,7 +124,9 @@ export default function ContactDetail() {
       const notes = mergeNotesWithAutoBlock(form.notes ?? '', { vat, father_name, mother_name, amka, iban, at, taxis_username, taxis_password });
       await updateContact(id, {
         name: form.name, phone: form.phone ?? '', phone2: form.phone2 ?? '',
-        email: form.email ?? '', notes,
+        phone3: form.phone3 ?? '', phone4: form.phone4 ?? '',
+        email: form.email ?? '', email2: form.email2 ?? '',
+        email3: form.email3 ?? '', email4: form.email4 ?? '', notes,
         vat, address: form.address ?? '',
         job_title: form.job_title ?? '', organization: form.organization ?? '', website: form.website ?? '',
         father_name, mother_name,
@@ -320,10 +339,35 @@ export default function ContactDetail() {
       <div className="animate-fade-in-up stagger-1 rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
         {editing ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Phones */}
+            {(['phone', 'phone2', 'phone3', 'phone4'] as const).slice(0, phoneSlots).map((key, i) => (
+              <div key={key}>
+                <label className="block text-xs text-text-secondary mb-1">{i === 0 ? 'Τηλέφωνο' : `Τηλέφωνο ${i + 1}`}</label>
+                <input className="input w-full" value={(form[key] as string) ?? ''} onChange={set(key)} />
+              </div>
+            ))}
+            {phoneSlots < 4 && (
+              <div className="flex items-end">
+                <button type="button" onClick={() => setPhoneSlots(s => s + 1)} className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-primary transition-colors cursor-pointer pb-0.5">
+                  <PlusCircle className="h-3.5 w-3.5" /> Τηλέφωνο
+                </button>
+              </div>
+            )}
+            {/* Emails */}
+            {(['email', 'email2', 'email3', 'email4'] as const).slice(0, emailSlots).map((key, i) => (
+              <div key={key}>
+                <label className="block text-xs text-text-secondary mb-1">{i === 0 ? 'Email' : `Email ${i + 1}`}</label>
+                <input className="input w-full" value={(form[key] as string) ?? ''} onChange={set(key)} />
+              </div>
+            ))}
+            {emailSlots < 4 && (
+              <div className="flex items-end">
+                <button type="button" onClick={() => setEmailSlots(s => s + 1)} className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-primary transition-colors cursor-pointer pb-0.5">
+                  <PlusCircle className="h-3.5 w-3.5" /> Email
+                </button>
+              </div>
+            )}
             {([
-              ['phone', 'Τηλέφωνο'],
-              ['phone2', 'Τηλέφωνο 2'],
-              ['email', 'Email'],
               ['vat', 'ΑΦΜ'],
               ['job_title', 'Επαγγελματική Ιδιότητα'],
               ['organization', 'Οργανισμός / Εταιρεία'],
@@ -360,7 +404,12 @@ export default function ContactDetail() {
               {([
                 ['phone', 'Τηλέφωνο', contact.phone],
                 ['phone2', 'Τηλέφωνο 2', contact.phone2],
+                ['phone3', 'Τηλέφωνο 3', contact.phone3],
+                ['phone4', 'Τηλέφωνο 4', contact.phone4],
                 ['email', 'Email', contact.email],
+                ['email2', 'Email 2', contact.email2],
+                ['email3', 'Email 3', contact.email3],
+                ['email4', 'Email 4', contact.email4],
                 ['job_title', 'Επαγγελματική Ιδιότητα', contact.job_title],
                 ['organization', 'Οργανισμός / Εταιρεία', contact.organization],
                 ['website', 'Ιστοσελίδα', contact.website],

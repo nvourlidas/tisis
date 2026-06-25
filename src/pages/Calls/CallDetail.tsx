@@ -2,11 +2,14 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Users, Mail, Briefcase, User, CalendarDays,
-  AlertCircle, RotateCcw, Pencil, Check, X, CalendarPlus,
+  AlertCircle, RotateCcw, Pencil, Check, X, CalendarPlus, ListTodo,
 } from 'lucide-react';
 import { fetchCall, updateCall, syncCallToCalendar } from './callUtils';
 import type { Call } from './types';
 import EditCallModal from './modals/EditCallModal';
+import TaskForm, { type TaskFormValues } from '../Tasks/TaskForm';
+import { createTask } from '../Tasks/taskUtils';
+import { useAuth } from '../../auth';
 
 const DIRECTION_LABEL: Record<string, string> = {
   phone: 'Τηλεφώνημα',
@@ -29,6 +32,7 @@ const DIRECTION_COLOR: Record<string, { badge: string; icon: string }> = {
 export default function CallDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [call, setCall] = useState<Call | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -36,7 +40,35 @@ export default function CallDetail() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleCreateTask = async (values: TaskFormValues) => {
+    if (!call || !profile?.tenant_id) return;
+    setCreatingTask(true);
+    setTaskError(null);
+    try {
+      await createTask(profile.tenant_id, {
+        title: values.title,
+        description: values.description,
+        due_date: values.due_date,
+        due_time: values.due_time || undefined,
+        case_id: values.case_id,
+        category: values.category || undefined,
+        extra_data: values.extra_data,
+        hours: values.hours,
+        linked_task_ids: values.linked_task_ids,
+        source_call_id: call.id,
+      });
+      setShowTaskForm(false);
+    } catch (err: unknown) {
+      setTaskError(err instanceof Error ? err.message : 'Αποτυχία δημιουργίας εργασίας.');
+    } finally {
+      setCreatingTask(false);
+    }
+  };
 
   const load = async () => {
     if (!id) return;
@@ -84,6 +116,28 @@ export default function CallDetail() {
         onUpdated={() => { setEditing(false); load(); }}
       />
 
+      {/* New Task slide-in */}
+      {showTaskForm && profile?.tenant_id && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowTaskForm(false)}>
+          <div className="w-full sm:max-w-xl max-h-[90dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-border/10 bg-secondary-background p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-text-primary">Νέα Εργασία</h2>
+              <button onClick={() => setShowTaskForm(false)} className="text-text-secondary hover:text-text-primary transition-colors cursor-pointer"><X className="h-4 w-4" /></button>
+            </div>
+            {taskError && <p className="text-xs text-red-400">{taskError}</p>}
+            <TaskForm
+              tenantId={profile.tenant_id}
+              initial={{ case_id: call.case_id ?? '', case_code: call.case_code ?? undefined, case_title: call.case_title ?? undefined }}
+              saving={creatingTask}
+              error={taskError}
+              onSubmit={handleCreateTask}
+              onCancel={() => setShowTaskForm(false)}
+              submitLabel="Δημιουργία Εργασίας"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="p-6 space-y-6">
         {/* Back */}
         <button onClick={() => navigate('/calls')} className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary cursor-pointer transition-colors animate-fade-in">
@@ -122,6 +176,13 @@ export default function CallDetail() {
                   {syncing ? 'Συγχρονισμός…' : 'Προσθήκη στο Calendar'}
                 </button>
               )}
+              <button
+                onClick={() => setShowTaskForm(true)}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
+              >
+                <ListTodo className="h-3.5 w-3.5" />
+                Νέα Εργασία
+              </button>
               <button
                 onClick={() => setEditing(true)}
                 className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"

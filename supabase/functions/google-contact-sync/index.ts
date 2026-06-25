@@ -60,14 +60,21 @@ function stripAutoBlock(notes: string | null | undefined): string | null {
   return stripped || null
 }
 
-function buildPersonBody(name: string, phone: string | null, phone2: string | null, email: string | null, organization?: string | null, job_title?: string | null, website?: string | null, birthdate?: string | null, address?: string | null, notes?: string | null) {
+function buildPersonBody(name: string, phone: string | null, phone2: string | null, phone3: string | null, phone4: string | null, email: string | null, email2: string | null, email3: string | null, email4: string | null, organization?: string | null, job_title?: string | null, website?: string | null, birthdate?: string | null, address?: string | null, notes?: string | null) {
   return {
     names: [{ givenName: name }],
     phoneNumbers: [
-      ...(phone ? [{ value: phone, type: 'mobile' }] : []),
-      ...(phone2 ? [{ value: phone2, type: 'other' }] : []),
+      ...(phone  ? [{ value: phone,  type: 'mobile' }] : []),
+      ...(phone2 ? [{ value: phone2, type: 'other'  }] : []),
+      ...(phone3 ? [{ value: phone3, type: 'other'  }] : []),
+      ...(phone4 ? [{ value: phone4, type: 'other'  }] : []),
     ],
-    emailAddresses: email ? [{ value: email }] : [],
+    emailAddresses: [
+      ...(email  ? [{ value: email  }] : []),
+      ...(email2 ? [{ value: email2 }] : []),
+      ...(email3 ? [{ value: email3 }] : []),
+      ...(email4 ? [{ value: email4 }] : []),
+    ],
     organizations: (organization || job_title) ? [{ name: organization ?? '', title: job_title ?? '' }] : [],
     urls: website ? [{ value: website }] : [],
     birthdays: birthdate ? [formatBirthdayForGoogle(birthdate)] : [],
@@ -91,7 +98,7 @@ function formatBirthdayForGoogle(iso: string | null): any {
   return { date: { year: year || undefined, month, day } }
 }
 
-async function fetchAllGoogleContacts(accessToken: string): Promise<Map<string, { name: string; phone: string | null; phone2: string | null; email: string | null; organization: string | null; job_title: string | null; website: string | null; birthdate: string | null; address: string | null; notes: string | null }>> {
+async function fetchAllGoogleContacts(accessToken: string): Promise<Map<string, { name: string; phone: string | null; phone2: string | null; phone3: string | null; phone4: string | null; email: string | null; email2: string | null; email3: string | null; email4: string | null; organization: string | null; job_title: string | null; website: string | null; birthdate: string | null; address: string | null; notes: string | null }>> {
   const result = new Map()
   let pageToken: string | undefined
 
@@ -114,9 +121,14 @@ async function fetchAllGoogleContacts(accessToken: string): Promise<Map<string, 
       const emails: string[] = (p.emailAddresses ?? []).map((em: any) => em.value?.toLowerCase().trim() ?? '')
       result.set(p.resourceName, {
         name,
-        phone: phones[0] ?? null,
+        phone:  phones[0] ?? null,
         phone2: phones[1] ?? null,
-        email: emails[0] ?? null,
+        phone3: phones[2] ?? null,
+        phone4: phones[3] ?? null,
+        email:  emails[0] ?? null,
+        email2: emails[1] ?? null,
+        email3: emails[2] ?? null,
+        email4: emails[3] ?? null,
         organization: p.organizations?.[0]?.name?.trim() ?? null,
         job_title: p.organizations?.[0]?.title?.trim() ?? null,
         website: p.urls?.[0]?.value?.trim() ?? null,
@@ -138,7 +150,7 @@ Deno.serve(async (req) => {
     if (auth instanceof Response) return auth
     const { tenantId, supabase } = auth
 
-    const { action, contactId, name, phone, phone2, email, organization, job_title, website, birthdate, address, notes, resourceName } = await req.json()
+    const { action, contactId, name, phone, phone2, phone3, phone4, email, email2, email3, email4, organization, job_title, website, birthdate, address, notes, resourceName } = await req.json()
 
     const { data: tokenRow } = await supabase
       .from('tenant_google_tokens')
@@ -154,7 +166,7 @@ Deno.serve(async (req) => {
     if (action === 'create') {
       const res = await fetch(`${PEOPLE_BASE}/people:createContact`, {
         method: 'POST', headers,
-        body: JSON.stringify(buildPersonBody(name, phone, phone2, email, organization, job_title, website, birthdate, address, notes)),
+        body: JSON.stringify(buildPersonBody(name, phone, phone2, phone3, phone4, email, email2, email3, email4, organization, job_title, website, birthdate, address, notes)),
       })
       const person = await res.json()
       if (!res.ok) throw new Error(person.error?.message ?? 'Google create failed')
@@ -169,7 +181,7 @@ Deno.serve(async (req) => {
       if (!getRes.ok) throw new Error(current.error?.message ?? 'Google get failed')
       const updateRes = await fetch(
         `${PEOPLE_BASE}/${resourceName}:updateContact?updatePersonFields=names,phoneNumbers,emailAddresses,organizations,urls,birthdays,addresses,biographies`,
-        { method: 'PATCH', headers, body: JSON.stringify({ etag: current.etag, ...buildPersonBody(name, phone, phone2, email, organization, job_title, website, birthdate, address, notes) }) },
+        { method: 'PATCH', headers, body: JSON.stringify({ etag: current.etag, ...buildPersonBody(name, phone, phone2, phone3, phone4, email, email2, email3, email4, organization, job_title, website, birthdate, address, notes) }) },
       )
       const updated = await updateRes.json()
       if (!updateRes.ok) throw new Error(updated.error?.message ?? 'Google update failed')
@@ -192,7 +204,7 @@ Deno.serve(async (req) => {
 
       const { data: unlinked, error: fetchErr } = await supabase
         .from('contacts')
-        .select('id, phone, phone2, email')
+        .select('id, phone, phone2, phone3, phone4, email')
         .eq('tenant_id', tenantId)
         .is('google_contact_id', null)
 
@@ -202,19 +214,28 @@ Deno.serve(async (req) => {
       const byPhone = new Map<string, string>()
       const byEmail = new Map<string, string>()
       for (const [resourceName, g] of googleContacts) {
-        if (g.phone) byPhone.set(g.phone.replace(/\s+/g, ''), resourceName)
+        if (g.phone)  byPhone.set(g.phone.replace(/\s+/g, ''),  resourceName)
         if (g.phone2) byPhone.set(g.phone2.replace(/\s+/g, ''), resourceName)
-        if (g.email) byEmail.set(g.email.toLowerCase(), resourceName)
+        if (g.phone3) byPhone.set(g.phone3.replace(/\s+/g, ''), resourceName)
+        if (g.phone4) byPhone.set(g.phone4.replace(/\s+/g, ''), resourceName)
+        if (g.email)  byEmail.set(g.email.toLowerCase(),  resourceName)
+        if (g.email2) byEmail.set(g.email2.toLowerCase(), resourceName)
+        if (g.email3) byEmail.set(g.email3.toLowerCase(), resourceName)
+        if (g.email4) byEmail.set(g.email4.toLowerCase(), resourceName)
       }
 
       let linked = 0
       for (const contact of unlinked ?? []) {
         const p1 = contact.phone?.replace(/\s+/g, '')
         const p2 = contact.phone2?.replace(/\s+/g, '')
+        const p3 = contact.phone3?.replace(/\s+/g, '')
+        const p4 = contact.phone4?.replace(/\s+/g, '')
         const em = contact.email?.toLowerCase()
         const resourceName =
           (p1 && byPhone.get(p1)) ||
           (p2 && byPhone.get(p2)) ||
+          (p3 && byPhone.get(p3)) ||
+          (p4 && byPhone.get(p4)) ||
           (em && byEmail.get(em)) ||
           null
         if (!resourceName) continue
@@ -236,7 +257,7 @@ Deno.serve(async (req) => {
       // Fetch all TISIS contacts that have a google_contact_id
       const { data: tisisContacts, error: fetchErr } = await supabase
         .from('contacts')
-        .select('id, name, phone, phone2, email, organization, job_title, website, birthdate, address, notes, google_contact_id')
+        .select('id, name, phone, phone2, phone3, phone4, email, email2, email3, email4, organization, job_title, website, birthdate, address, notes, google_contact_id')
         .eq('tenant_id', tenantId)
         .not('google_contact_id', 'is', null)
 
@@ -259,9 +280,14 @@ Deno.serve(async (req) => {
 
         if (
           googleData.name === contact.name &&
-          googleData.phone === contact.phone &&
+          googleData.phone  === contact.phone &&
           googleData.phone2 === contact.phone2 &&
-          googleData.email === contact.email &&
+          googleData.phone3 === contact.phone3 &&
+          googleData.phone4 === contact.phone4 &&
+          googleData.email  === contact.email &&
+          googleData.email2 === contact.email2 &&
+          googleData.email3 === contact.email3 &&
+          googleData.email4 === contact.email4 &&
           googleData.organization === contact.organization &&
           googleData.job_title === contact.job_title &&
           googleData.website === contact.website &&
@@ -281,21 +307,35 @@ Deno.serve(async (req) => {
           ? googleManualNotes + autoBlockSuffix
           : (autoBlockSuffix.trimStart() || null)
 
+        const contactPatch = {
+          name:   googleData.name,
+          phone:  googleData.phone,
+          phone2: googleData.phone2,
+          phone3: googleData.phone3,
+          phone4: googleData.phone4,
+          email:  googleData.email,
+          email2: googleData.email2,
+          email3: googleData.email3,
+          email4: googleData.email4,
+          organization: googleData.organization,
+          job_title: googleData.job_title,
+          website: googleData.website,
+          birthdate: googleData.birthdate,
+          address: googleData.address,
+          notes: mergedNotes,
+        }
+
         await supabase
           .from('contacts')
-          .update({
-            name: googleData.name,
-            phone: googleData.phone,
-            phone2: googleData.phone2,
-            email: googleData.email,
-            organization: googleData.organization,
-            job_title: googleData.job_title,
-            website: googleData.website,
-            birthdate: googleData.birthdate,
-            address: googleData.address,
-            notes: mergedNotes,
-          })
+          .update(contactPatch)
           .eq('id', contact.id)
+          .eq('tenant_id', tenantId)
+
+        // Sync to linked client if one exists
+        await supabase
+          .from('clients')
+          .update(contactPatch)
+          .eq('contact_id', contact.id)
           .eq('tenant_id', tenantId)
 
         updated++

@@ -7,11 +7,11 @@ import {
 import { useAuth } from '../../auth';
 import { formatDate } from '../../lib/dateUtils';
 import {
-  fetchTask, fetchLinkedTasks, completeTask, reopenTask, updateTask, updateTaskHours,
+  fetchTask, fetchLinkedTasksFull, completeTask, reopenTask, updateTask, updateTaskHours,
   addTaskLink, removeTaskLink, searchFullTasks, createTask,
   fetchCategoryRates, calcTaskAmount,
   TASK_CATEGORIES,
-  type Task, type LinkedTask, type LegalActData, type AppointmentData, type CourtData, type TaskCategory, type CategoryRate,
+  type Task, type LegalActData, type AppointmentData, type CourtData, type TaskCategory, type CategoryRate,
 } from './taskUtils';
 
 import TaskForm, { taskToFormValues, type TaskFormValues } from './TaskForm';
@@ -23,7 +23,7 @@ export default function TaskDetail() {
   const tenantId = profile?.tenant_id ?? '';
 
   const [task, setTask] = useState<Task | null>(null);
-  const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
+  const [linkedTasks, setLinkedTasks] = useState<Task[]>([]);
   const [rates, setRates] = useState<CategoryRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
@@ -43,7 +43,7 @@ export default function TaskDetail() {
     if (!id) return;
     await addTaskLink(tenantId, id, target.id);
     setShowLinkModal(false);
-    const links = await fetchLinkedTasks(id);
+    const links = await fetchLinkedTasksFull(id);
     setLinkedTasks(links);
   };
 
@@ -64,7 +64,7 @@ export default function TaskDetail() {
       });
       await addTaskLink(tenantId, id, newTask.id);
       setShowCreateLinked(false);
-      const links = await fetchLinkedTasks(id);
+      const links = await fetchLinkedTasksFull(id);
       setLinkedTasks(links);
     } catch (e: any) {
       setCreateLinkedError(e?.message ?? 'Αποτυχία δημιουργίας εργασίας.');
@@ -76,14 +76,14 @@ export default function TaskDetail() {
   const handleRemoveLink = async (linkedTaskId: string) => {
     if (!id) return;
     await removeTaskLink(id, linkedTaskId);
-    const links = await fetchLinkedTasks(id);
+    const links = await fetchLinkedTasksFull(id);
     setLinkedTasks(links);
   };
 
   const load = async () => {
     if (!id) return;
     setLoading(true);
-    const [t, links] = await Promise.all([fetchTask(id), fetchLinkedTasks(id)]);
+    const [t, links] = await Promise.all([fetchTask(id), fetchLinkedTasksFull(id)]);
     setTask(t);
     setLinkedTasks(links);
     setLoading(false);
@@ -386,7 +386,13 @@ export default function TaskDetail() {
         ) : (
           <div className="space-y-2">
             {linkedTasks.map(t => (
-              <LinkedTaskRow key={t.id} task={t} onClick={() => navigate(`/tasks/${t.id}`)} onUnlink={() => handleRemoveLink(t.id)} />
+              <LinkedTaskFullRow
+                key={t.id}
+                task={t}
+                todayStr={today}
+                onNavigate={navigate}
+                onUnlink={() => handleRemoveLink(t.id)}
+              />
             ))}
           </div>
         )}
@@ -608,49 +614,161 @@ function InfoCard({ icon, label, value, color = 'text-text-secondary', bg = 'bg-
   );
 }
 
-function LinkedTaskRow({ task, onClick, onUnlink }: { task: LinkedTask; onClick: () => void; onUnlink?: () => void }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const isOverdue = task.status === 'open' && !!task.due_date && task.due_date < today;
-  const isDone = task.status === 'done';
+const DUE_COLOR_CHIP: Record<string, string> = {
+  red: 'bg-red-500/15 text-red-500',
+  purple: 'bg-purple-500/15 text-purple-500',
+  orange: 'bg-orange-500/15 text-orange-500',
+  yellow: 'bg-yellow-500/15 text-yellow-500',
+};
+const DUE_COLOR_CARD: Record<string, string> = {
+  red: 'border-red-500/20 bg-red-500/5',
+  purple: 'border-purple-500/20 bg-purple-500/5',
+  orange: 'border-orange-500/20 bg-orange-500/5',
+  yellow: 'border-yellow-500/20 bg-yellow-500/5',
+};
+const DUE_COLOR_BTN: Record<string, string> = {
+  red: 'border-red-400 hover:bg-red-400/20',
+  purple: 'border-purple-400 hover:bg-purple-400/20',
+  orange: 'border-orange-400 hover:bg-orange-400/20',
+  yellow: 'border-yellow-400 hover:bg-yellow-400/20',
+};
+const CATEGORY_COLORS: Record<TaskCategory, string> = {
+  legal_act: 'bg-blue-500/15 text-blue-500',
+  lawsuit: 'bg-indigo-500/15 text-indigo-500',
+  extrajudicial: 'bg-purple-500/15 text-purple-500',
+  appointment: 'bg-teal-500/15 text-teal-500',
+  file_work: 'bg-amber-500/15 text-amber-500',
+  court: 'bg-black/70 text-white font-semibold',
+};
+
+function taskDueColor(dueDate: string | null | undefined, todayStr: string, status: string) {
+  if (status === 'done' || !dueDate) return null;
+  const diff = Math.round((new Date(dueDate + 'T00:00:00').getTime() - new Date(todayStr + 'T00:00:00').getTime()) / 86400000);
+  if (diff <= 0) return 'red';
+  if (diff <= 7) return 'purple';
+  if (diff <= 20) return 'orange';
+  if (diff <= 30) return 'yellow';
+  return null;
+}
+
+function ExtraDataSummary({ task }: { task: Task }) {
+  const lines: React.ReactNode[] = [];
+  if (task.category && task.extra_data) {
+    if (task.category === 'legal_act' || task.category === 'lawsuit') {
+      const d = task.extra_data as LegalActData;
+      const parts = [
+        d.authority && `${task.category === 'lawsuit' ? 'Δικαστήριο' : 'Αρχή'}: ${d.authority}`,
+        task.category === 'lawsuit' && d.gak && `ΓΑΚ: ${d.gak}`,
+        task.category === 'lawsuit' && d.eak && `ΕΑΚ: ${d.eak}`,
+        task.category === 'legal_act' && (d as any).protocol_number && `Αρ. Πρωτ.: ${(d as any).protocol_number}`,
+      ].filter(Boolean);
+      if (parts.length) lines.push(<span key="legal">{parts.join(' · ')}</span>);
+    } else if (task.category === 'appointment') {
+      const d = task.extra_data as AppointmentData;
+      if (d.start_datetime) {
+        const start = new Date(d.start_datetime).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const end = d.end_datetime ? ' – ' + new Date(d.end_datetime).toLocaleString('el-GR', { hour: '2-digit', minute: '2-digit' }) : '';
+        lines.push(<span key="appt">{start}{end}</span>);
+      }
+    } else if (task.category === 'court') {
+      const d = task.extra_data as CourtData;
+      const parts = [
+        (d as any).decision_number && `Αρ. Απόφασης: ${(d as any).decision_number}`,
+        (d as any).decision_date && `Ημ. Έκδοσης: ${new Date((d as any).decision_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`,
+      ].filter(Boolean);
+      if (parts.length) lines.push(<span key="court">{parts.join(' · ')}</span>);
+    }
+  }
+  if (!lines.length) return null;
+  return <div className="text-xs text-text-secondary mt-0.5 space-y-0.5">{lines}</div>;
+}
+
+function LinkedTaskFullRow({ task, todayStr, onNavigate, onUnlink }: {
+  task: Task;
+  todayStr: string;
+  onNavigate: ReturnType<typeof useNavigate>;
+  onUnlink?: () => void;
+}) {
+  const done = task.status === 'done';
+  const color = taskDueColor(task.due_date, todayStr, task.status);
+  const totalExpenses = task.expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
+  const hasFinancials = task.fee != null || (task.expenses?.length ?? 0) > 0;
 
   return (
-    <div className={[
-      'flex items-center gap-2 rounded-xl border group',
-      isDone ? 'border-green-500/15 bg-green-500/5 opacity-70' :
-      isOverdue ? 'border-orange-500/20 bg-orange-500/5' :
-      'border-border/10 bg-white/2 hover:bg-white/4',
-    ].join(' ')}>
-    <button
-      onClick={onClick}
-      className="flex-1 flex items-center gap-3 px-4 py-3 text-left cursor-pointer hover:-translate-y-0.5 transition-transform"
-    >
-      <div className={[
-        'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
-        isDone ? 'border-green-500 bg-green-500 text-white' :
-        isOverdue ? 'border-orange-400' : 'border-border/40',
-      ].join(' ')}>
-        {isDone && <Check className="h-2.5 w-2.5" />}
+    <div className={`rounded-xl border px-4 py-3 space-y-2 group ${task.category === 'court' ? 'border-rose-500/40 bg-rose-500/8' : color ? DUE_COLOR_CARD[color] : done ? 'border-green-600/20 bg-green-500/8 opacity-80' : 'border-border/10 bg-white/2'}`}>
+      <div className="flex items-start gap-3">
+        <div className={['mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center',
+          done ? 'border-green-500 bg-green-500 text-white' :
+          color ? DUE_COLOR_BTN[color] :
+          'border-border/30'].join(' ')}>
+          {done && <Check className="h-3 w-3" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <button onClick={() => onNavigate(`/tasks/${task.id}`)} className="text-left hover:underline cursor-pointer">
+            <p className={`text-sm font-medium ${done ? 'text-text-secondary' : 'text-text-primary'}`}>
+              {(task.case_code || task.category)
+                ? [task.case_code, task.category ? TASK_CATEGORIES[task.category] : null].filter(Boolean).join(' · ')
+                : task.title}
+            </p>
+            {(task.case_code || task.category) && (
+              <p className={`text-xs ${done ? 'text-text-secondary/60' : 'text-text-secondary'}`}>{task.title}</p>
+            )}
+          </button>
+          <ExtraDataSummary task={task} />
+          {task.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{task.description}</p>}
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            {task.case_code && (
+              <button onClick={() => task.case_id && onNavigate(`/cases/${task.case_id}`)}
+                className="text-xs text-primary hover:underline cursor-pointer font-mono">
+                {task.case_code} — {task.case_title}
+              </button>
+            )}
+            {task.category && (
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${CATEGORY_COLORS[task.category]}`}>
+                {TASK_CATEGORIES[task.category]}
+              </span>
+            )}
+            {(task.linked_tasks?.length ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/8 text-text-secondary">
+                <Link2 className="h-2.5 w-2.5" />
+                {task.linked_tasks!.length}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {task.due_date && (
+            <span className={`text-[14px] font-medium px-1.5 py-0.5 rounded ${color ? DUE_COLOR_CHIP[color] : done ? 'text-text-secondary' : 'bg-white/8 text-text-secondary'}`}>
+              {new Date(task.due_date + 'T00:00:00').toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              {task.due_time && <span className="ml-1 opacity-80">{task.due_time}</span>}
+            </span>
+          )}
+          {color && (
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${DUE_COLOR_CHIP[color]}`}>
+              <AlertCircle className="h-2.5 w-2.5" />
+              {color === 'red' ? 'Ληξ/θεσμη' : color === 'purple' ? '≤7 ημ.' : color === 'orange' ? '≤20 ημ.' : '≤30 ημ.'}
+            </span>
+          )}
+          {onUnlink && (
+            <button
+              onClick={e => { e.stopPropagation(); onUnlink(); }}
+              className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-secondary hover:text-red-400 transition-all cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
-      <span className={`flex-1 text-sm font-medium truncate ${isDone ? 'text-text-secondary' : 'text-text-primary'}`}>
-        {task.title}
-      </span>
-      {task.category && (
-        <span className="text-[10px] text-text-secondary shrink-0">{TASK_CATEGORIES[task.category]}</span>
+      {hasFinancials && (
+        <div className="flex flex-wrap gap-3 pl-8 text-xs text-green-500">
+          {task.fee != null && task.fee > 0 && (
+            <span>Αμοιβή: <strong>{task.fee.toFixed(2)} €</strong></span>
+          )}
+          {(task.expenses?.length ?? 0) > 0 && (
+            <span className="text-red-500">Έξοδα: <strong>{totalExpenses.toFixed(2)} €</strong> ({task.expenses!.length})</span>
+          )}
+        </div>
       )}
-      {task.due_date && (
-        <span className={`text-[10px] shrink-0 ${isOverdue ? 'text-orange-400' : 'text-text-secondary'}`}>
-          {formatDate(task.due_date)}
-        </span>
-      )}
-    </button>
-    {onUnlink && (
-      <button
-        onClick={e => { e.stopPropagation(); onUnlink(); }}
-        className="opacity-0 group-hover:opacity-100 pr-3 text-text-secondary hover:text-red-400 transition-all cursor-pointer shrink-0"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    )}
     </div>
   );
 }

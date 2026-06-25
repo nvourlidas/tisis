@@ -9,8 +9,9 @@ type Props = {
 };
 
 const empty: ClientFormData = {
-  name: '', phone: '', phone2: '', email: '',
-  vat: '', address: '', professional_status: '', notes: '',
+  name: '', phone: '', phone2: '', phone3: '', phone4: '',
+  email: '', email2: '', email3: '', email4: '',
+  vat: '', address: '', job_title: '', organization: '', website: '', notes: '',
   father_name: '', mother_name: '', birthdate: '',
   amka: '', iban: '', at: '', taxis_username: '', taxis_password: '',
 };
@@ -64,19 +65,53 @@ export default function NewClientModal({ open, onClose, onSubmit }: Props) {
               <input className="input w-full" value={form.phone2} onChange={set('phone2')} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Τηλέφωνο 3</label>
+              <input className="input w-full" value={form.phone3} onChange={set('phone3')} />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Τηλέφωνο 4</label>
+              <input className="input w-full" value={form.phone4} onChange={set('phone4')} />
+            </div>
+          </div>
           <div>
             <label className="block text-sm text-text-secondary mb-1">Email</label>
             <input className="input w-full" type="email" value={form.email} onChange={set('email')} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
+              <label className="block text-sm text-text-secondary mb-1">Email 2</label>
+              <input className="input w-full" type="email" value={form.email2} onChange={set('email2')} />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Email 3</label>
+              <input className="input w-full" type="email" value={form.email3} onChange={set('email3')} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Email 4</label>
+              <input className="input w-full" type="email" value={form.email4} onChange={set('email4')} />
+            </div>
+            <div>
               <label className="block text-sm text-text-secondary mb-1">ΑΦΜ</label>
               <input className="input w-full" value={form.vat} onChange={set('vat')} />
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-text-secondary mb-1">Επαγγελματική Ιδιότητα</label>
-              <input className="input w-full" value={form.professional_status} onChange={set('professional_status')} placeholder="π.χ. Ιδιώτης, Εταιρεία" />
+              <label className="block text-sm text-text-secondary mb-1">Ιδιότητα / Επάγγελμα</label>
+              <input className="input w-full" value={form.job_title} onChange={set('job_title')} placeholder="π.χ. Ιδιώτης, Δικηγόρος" />
             </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Οργανισμός / Εταιρεία</label>
+              <input className="input w-full" value={form.organization} onChange={set('organization')} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Website</label>
+            <input className="input w-full" type="url" value={form.website} onChange={set('website')} />
           </div>
           <div>
             <label className="block text-sm text-text-secondary mb-1">Διεύθυνση</label>

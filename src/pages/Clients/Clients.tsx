@@ -30,10 +30,10 @@ const COLUMNS: ColumnDef<Client>[] = [
   {
     key: 'professional_status',
     header: 'Ιδιότητα',
-    render: (c) => c.professional_status
-      ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">{c.professional_status}</span>
+    render: (c) => c.job_title
+      ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">{c.job_title}</span>
       : <span className="text-text-secondary">—</span>,
-    sortValue: (c) => c.professional_status ?? '',
+    sortValue: (c) => c.job_title ?? '',
     defaultVisible: false,
   },
   {

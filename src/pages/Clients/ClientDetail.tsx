@@ -73,7 +73,12 @@ const CASE_COLUMNS: ColumnDef<CaseSummary>[] = [
 const FIELD_META: Partial<Record<keyof Client, { icon: React.ReactNode; color: string; bg: string }>> = {
   phone:             { icon: <Phone className="h-4 w-4" />,       color: 'text-blue-500',   bg: 'bg-blue-500/10' },
   phone2:            { icon: <Phone className="h-4 w-4" />,       color: 'text-blue-400',   bg: 'bg-blue-400/10' },
+  phone3:            { icon: <Phone className="h-4 w-4" />,       color: 'text-blue-400',   bg: 'bg-blue-400/10' },
+  phone4:            { icon: <Phone className="h-4 w-4" />,       color: 'text-blue-400',   bg: 'bg-blue-400/10' },
   email:             { icon: <Mail className="h-4 w-4" />,        color: 'text-purple-500', bg: 'bg-purple-500/10' },
+  email2:            { icon: <Mail className="h-4 w-4" />,        color: 'text-purple-400', bg: 'bg-purple-400/10' },
+  email3:            { icon: <Mail className="h-4 w-4" />,        color: 'text-purple-400', bg: 'bg-purple-400/10' },
+  email4:            { icon: <Mail className="h-4 w-4" />,        color: 'text-purple-400', bg: 'bg-purple-400/10' },
   address:           { icon: <MapPin className="h-4 w-4" />,      color: 'text-green-500',  bg: 'bg-green-500/10' },
   vat:               { icon: <FileText className="h-4 w-4" />,    color: 'text-orange-500', bg: 'bg-orange-500/10' },
   father_name:       { icon: <User className="h-4 w-4" />,        color: 'text-text-secondary', bg: 'bg-border/5' },
@@ -142,9 +147,12 @@ export default function ClientDetail() {
     setError(null);
     try {
       await updateClient(id, {
-        name: form.name, phone: form.phone ?? '', phone2: form.phone2 ?? '',
-        email: form.email ?? '', vat: form.vat ?? '', address: form.address ?? '',
-        professional_status: form.professional_status ?? '', notes: form.notes ?? '',
+        name: form.name,
+        phone: form.phone ?? '', phone2: form.phone2 ?? '', phone3: form.phone3 ?? '', phone4: form.phone4 ?? '',
+        email: form.email ?? '', email2: form.email2 ?? '', email3: form.email3 ?? '', email4: form.email4 ?? '',
+        vat: form.vat ?? '', address: form.address ?? '',
+        job_title: form.job_title ?? '', organization: form.organization ?? '', website: form.website ?? '',
+        notes: form.notes ?? '',
         father_name: form.father_name ?? '', mother_name: form.mother_name ?? '',
         birthdate: form.birthdate ?? '', amka: form.amka ?? '', iban: form.iban ?? '',
         at: form.at ?? '', taxis_username: form.taxis_username ?? '', taxis_password: form.taxis_password ?? '',
@@ -217,9 +225,9 @@ export default function ClientDetail() {
               ) : (
                 <h1 className="text-xl font-bold text-text-primary leading-tight">{client.name}</h1>
               )}
-              {client.professional_status && !editing && (
+              {client.job_title && !editing && (
                 <span className="inline-flex items-center mt-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                  {client.professional_status}
+                  {client.job_title}
                 </span>
               )}
             </div>
@@ -278,9 +286,16 @@ export default function ClientDetail() {
             {([
               ['phone',           'Τηλέφωνο'],
               ['phone2',          'Τηλέφωνο 2'],
+              ['phone3',          'Τηλέφωνο 3'],
+              ['phone4',          'Τηλέφωνο 4'],
               ['email',           'Email'],
+              ['email2',          'Email 2'],
+              ['email3',          'Email 3'],
+              ['email4',          'Email 4'],
               ['vat',             'ΑΦΜ'],
-              ['professional_status', 'Επαγγελματική Ιδιότητα'],
+              ['job_title',       'Ιδιότητα / Επάγγελμα'],
+              ['organization',    'Οργανισμός / Εταιρεία'],
+              ['website',         'Website'],
               ['address',         'Διεύθυνση'],
               ['father_name',     'Όνομα πατρός'],
               ['mother_name',     'Όνομα μητρός'],
@@ -312,19 +327,27 @@ export default function ClientDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {(
                 [
-                  ['phone',          'Τηλέφωνο',           client.phone],
-                  ['phone2',         'Τηλέφωνο 2',          client.phone2],
-                  ['email',          'Email',               client.email],
-                  ['address',        'Διεύθυνση',           client.address],
-                  ['vat',            'ΑΦΜ',                 client.vat],
-                  ['father_name',    'Όνομα πατρός',        client.father_name],
-                  ['mother_name',    'Όνομα μητρός',        client.mother_name],
-                  ['birthdate',      'Ημ/νία γέννησης',     client.birthdate ? formatDate(client.birthdate) : null],
-                  ['amka',           'ΑΜΚΑ',                client.amka],
-                  ['iban',           'IBAN',                client.iban],
-                  ['at',             'ΑΤ',                  client.at],
-                  ['taxis_username', 'Taxisnet Username',   client.taxis_username],
-                  ['taxis_password', 'Taxisnet Password',   client.taxis_password ?? null],
+                  ['phone',          'Τηλέφωνο',             client.phone],
+                  ['phone2',         'Τηλέφωνο 2',           client.phone2],
+                  ['phone3',         'Τηλέφωνο 3',           client.phone3],
+                  ['phone4',         'Τηλέφωνο 4',           client.phone4],
+                  ['email',          'Email',                 client.email],
+                  ['email2',         'Email 2',               client.email2],
+                  ['email3',         'Email 3',               client.email3],
+                  ['email4',         'Email 4',               client.email4],
+                  ['address',        'Διεύθυνση',             client.address],
+                  ['vat',            'ΑΦΜ',                   client.vat],
+                  ['job_title',      'Ιδιότητα / Επάγγελμα', client.job_title],
+                  ['organization',   'Οργανισμός / Εταιρεία', client.organization],
+                  ['website',        'Website',               client.website],
+                  ['father_name',    'Όνομα πατρός',          client.father_name],
+                  ['mother_name',    'Όνομα μητρός',          client.mother_name],
+                  ['birthdate',      'Ημ/νία γέννησης',       client.birthdate ? formatDate(client.birthdate) : null],
+                  ['amka',           'ΑΜΚΑ',                  client.amka],
+                  ['iban',           'IBAN',                  client.iban],
+                  ['at',             'ΑΤ',                    client.at],
+                  ['taxis_username', 'Taxisnet Username',     client.taxis_username],
+                  ['taxis_password', 'Taxisnet Password',     client.taxis_password ?? null],
                 ] as [keyof Client, string, string | null | undefined][]
               ).filter(([, , v]) => !!v).map(([k, label, value]) => {
                 const meta = FIELD_META[k];

@@ -4,7 +4,12 @@ export type Contact = {
   name: string;
   phone: string | null;
   phone2: string | null;
+  phone3: string | null;
+  phone4: string | null;
   email: string | null;
+  email2: string | null;
+  email3: string | null;
+  email4: string | null;
   notes: string | null;
   vat: string | null;
   address: string | null;
@@ -28,7 +33,12 @@ export type ContactFormData = {
   name: string;
   phone: string;
   phone2: string;
+  phone3: string;
+  phone4: string;
   email: string;
+  email2: string;
+  email3: string;
+  email4: string;
   notes: string;
   vat: string;
   address: string;

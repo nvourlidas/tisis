@@ -166,7 +166,13 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
   const initLegalAct = (initCategory === 'legal_act' || initCategory === 'lawsuit') ? legalActFromData(initExtra as LegalActData) : emptyLegalAct();
   const initAppointment = initCategory === 'appointment' ? appointmentFromData(initExtra as AppointmentData) : emptyAppointment();
   const initCourt = initCategory === 'court' ? courtFromData(initExtra as CourtData) : emptyCourt();
-  const [description, setDescription] = useState(initial?.description ?? '');
+  const initAutoDesc = buildDescriptionFromFields(initCategory, initLegalAct, initAppointment, initCourt);
+  const initFullDesc = initial?.description ?? '';
+  const initExtraNotes = initFullDesc.startsWith(initAutoDesc)
+    ? initFullDesc.slice(initAutoDesc.length).replace(/^\n/, '')
+    : initAutoDesc ? initFullDesc : initFullDesc;
+  const [description, setDescription] = useState(initAutoDesc);
+  const [extraNotes, setExtraNotes] = useState(initExtraNotes);
   const [due_date, setDueDate] = useState(initial?.due_date ?? '');
   const [due_time, setDueTime] = useState(initial?.due_time ?? '');
   const [case_id, setCaseId] = useState(initial?.case_id ?? '');
@@ -180,7 +186,10 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
   const [rates, setRates] = useState<CategoryRate[]>([]);
 
   useEffect(() => {
-    setDescription(buildDescriptionFromFields(category, legalAct, appointment, court));
+    const built = buildDescriptionFromFields(category, legalAct, appointment, court);
+    setDescription(built);
+    if (!initial?.id && built) setExtraNotes(n => n || '-------\n');
+    if (!initial?.id && !built) setExtraNotes(n => n === '-------\n' ? '' : n);
   }, [
     category,
     legalAct.protocol_number, legalAct.creation_date, legalAct.authority, legalAct.gak, legalAct.eak,
@@ -266,8 +275,9 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
     e.preventDefault();
     if (!titleBody.trim() && !titlePrefix) return;
     if (!title.trim()) return;
+    const fullDescription = description + (extraNotes.trim() ? '\n' + extraNotes : '');
     onSubmit({
-      title, description, due_date, due_time, case_id, category,
+      title, description: fullDescription, due_date, due_time, case_id, category,
       extra_data: buildExtraData(category, legalAct, appointment, court),
       hours: hours !== '' ? parseFloat(hours) : null,
       linked_task_ids: linkedTasks.map(t => t.id),
@@ -561,7 +571,17 @@ export default function TaskForm({ tenantId, initial, hideCaseField, hideLinkedT
 
         <div>
           <label className="block text-xs text-text-secondary mb-1">Περιγραφή</label>
-          <textarea className="input w-full resize-none" rows={3} value={description} onChange={e => setDescription(e.target.value)} />
+          {description && (
+            <>
+              <textarea className="input w-full resize-none text-text-secondary" rows={Math.max(2, description.split('\n').length)} value={description} readOnly />
+              <div className="flex items-center gap-2 my-2">
+                <div className="flex-1 border-t border-border/20" />
+                <span className="text-[10px] text-text-secondary uppercase tracking-wider">Σημειώσεις</span>
+                <div className="flex-1 border-t border-border/20" />
+              </div>
+            </>
+          )}
+          <textarea className="input w-full resize-none" rows={3} placeholder="Επιπλέον σημειώσεις…" value={extraNotes} onChange={e => setExtraNotes(e.target.value)} />
         </div>
 
         {error && <p className="text-sm text-danger">{error}</p>}
