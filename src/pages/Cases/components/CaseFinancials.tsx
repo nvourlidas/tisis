@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { TrendingUp, TrendingDown, Wallet, Euro, RotateCcw, Plus, Trash2, ChevronDown, ChevronRight, X, Clock, CheckCircle2, Paperclip, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Euro, RotateCcw, Plus, Trash2, ChevronDown, ChevronRight, X, Clock, CheckCircle2, Paperclip, Loader2, Upload, ExternalLink, FileText } from 'lucide-react';
 import { fetchCaseFees, createCaseFee, deleteCaseFee, createFeePayment, deleteFeePayment, fetchCaseExpenses, createCaseExpense, deleteCaseExpense, fetchCaseTasks, linkTaskToFee } from '../caseUtils';
 import type { CaseFee, FeePayment, CaseExpense, CaseTask } from '../types';
 import { formatDate } from '../../../lib/dateUtils';
@@ -373,6 +373,9 @@ export default function CaseFinancials({ caseId, tenantId, folderId }: Props) {
               ))}
             </div>
           ) : null}
+
+          {/* Shared expense receipts folder */}
+          <ExpenseFilesPanel folderId={folderId} caseId={caseId} />
         </div>
 
         {/* RIGHT — Tasks with rates widget */}
@@ -448,56 +451,25 @@ export default function CaseFinancials({ caseId, tenantId, folderId }: Props) {
   );
 }
 
-function NewExpenseForm({ tenantId, caseId, folderId, onSaved, onCancel }: {
+function NewExpenseForm({ tenantId, caseId, onSaved, onCancel }: {
   tenantId: string; caseId: string; folderId: string | null; onSaved: () => void; onCancel: () => void;
 }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayStr);
   const [notes, setNotes] = useState('');
-  const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = async () => {
     if (!amount || Number(amount) <= 0) return;
     setSaving(true);
     setError(null);
     try {
-      let driveFile: { id: string; name: string; webViewLink: string } | null = null;
-      if (file) {
-        if (!folderId) {
-          setError('Δημιουργήστε πρώτα τον φάκελο Drive της υπόθεσης από την καρτέλα Αρχεία.');
-          setSaving(false);
-          return;
-        }
-        setUploading(true);
-        const { data: { session } } = await supabase.auth.getSession();
-        const subfolder = await findOrCreateSubfolder(folderId, EXPENSES_SUBFOLDER);
-        if (!subfolder.ok || !subfolder.folder?.id) {
-          setError(subfolder.error ?? 'Αποτυχία δημιουργίας υποφακέλου «Έξοδα».');
-          setUploading(false);
-          setSaving(false);
-          return;
-        }
-        const uploadData = await uploadFileToDrive(file, subfolder.folder.id, caseId, session?.access_token ?? '');
-        setUploading(false);
-        if (!uploadData.ok || !uploadData.file) {
-          setError(uploadData.error ?? 'Αποτυχία μεταφόρτωσης αρχείου.');
-          setSaving(false);
-          return;
-        }
-        driveFile = uploadData.file;
-      }
       await createCaseExpense(tenantId, caseId, {
         amount: Number(amount),
         date: date || null,
         notes: notes || undefined,
-        drive_file_id: driveFile?.id ?? null,
-        drive_file_url: driveFile?.webViewLink ?? null,
-        drive_file_name: driveFile?.name ?? null,
       });
       onSaved();
     } catch (e: any) {
@@ -530,39 +502,137 @@ function NewExpenseForm({ tenantId, caseId, folderId, onSaved, onCancel }: {
         <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
           placeholder="Περιγραφή εξόδου…" className="input w-full text-sm rounded-xl" />
       </div>
-      <div>
-        <label className="block text-xs text-text-secondary mb-1">Παραστατικό</label>
-        <input ref={fileInputRef} type="file" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
-        {file ? (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-primary">
-            <Paperclip className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-            <span className="flex-1 truncate">{file.name}</span>
-            <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-              className="text-text-secondary hover:text-danger cursor-pointer">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={!folderId}
-            title={!folderId ? 'Δημιουργήστε πρώτα τον φάκελο Drive από την καρτέλα Αρχεία' : undefined}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-            Επισύναψη αρχείου στο Drive ({EXPENSES_SUBFOLDER})
-          </button>
-        )}
-      </div>
       {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 rounded-xl text-sm text-text-secondary hover:bg-white/5 cursor-pointer">Ακύρωση</button>
         <button onClick={handleSave} disabled={saving || !amount || Number(amount) <= 0}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-500 cursor-pointer disabled:opacity-50">
-          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          {uploading ? 'Μεταφόρτωση…' : saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
+          <Plus className="h-3.5 w-3.5" />
+          {saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
         </button>
       </div>
+    </div>
+  );
+}
+
+type ExpenseDriveFile = { id: string; name: string; size?: number; modifiedTime: string; webViewLink: string };
+
+function ExpenseFilesPanel({ folderId, caseId }: { folderId: string | null; caseId: string }) {
+  const [subfolderId, setSubfolderId] = useState<string | null>(null);
+  const [files, setFiles] = useState<ExpenseDriveFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!folderId) return;
+    setLoading(true);
+    setError(null);
+    findOrCreateSubfolder(folderId, EXPENSES_SUBFOLDER)
+      .then(async (subfolder) => {
+        if (!subfolder.ok || !subfolder.folder?.id) {
+          setError(subfolder.error ?? 'Αποτυχία εύρεσης υποφακέλου «Έξοδα».');
+          return;
+        }
+        setSubfolderId(subfolder.folder.id);
+        const data = await callDriveSync({ action: 'list-files', folderId: subfolder.folder.id });
+        if (data.ok) setFiles(data.files);
+      })
+      .finally(() => setLoading(false));
+  }, [folderId]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []);
+    if (selected.length === 0 || !subfolderId) return;
+    if (inputRef.current) inputRef.current.value = '';
+    setError(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token ?? '';
+    setUploadProgress({ done: 0, total: selected.length });
+    let done = 0;
+    for (const file of selected) {
+      const data = await uploadFileToDrive(file, subfolderId, caseId, accessToken);
+      if (data.ok && data.file) setFiles(prev => [data.file, ...prev]);
+      done += 1;
+      setUploadProgress({ done, total: selected.length });
+    }
+    setUploadProgress(null);
+  };
+
+  const handleDelete = async (fileId: string) => {
+    if (!confirm('Διαγραφή παραστατικού;')) return;
+    setDeletingId(fileId);
+    try {
+      await callDriveSync({ action: 'delete-file', fileId });
+      setFiles(prev => prev.filter(f => f.id !== fileId));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  if (!folderId) return null;
+
+  return (
+    <div className="rounded-xl border border-border/10 bg-secondary-background overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/10">
+        <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+          Παραστατικά Εξόδων ({files.length})
+        </h3>
+        <input ref={inputRef} type="file" multiple className="hidden" onChange={handleUpload} />
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={!subfolderId || !!uploadProgress}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer disabled:opacity-50"
+        >
+          {uploadProgress ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          Ανέβασμα αρχείων
+        </button>
+      </div>
+
+      {uploadProgress && (
+        <div className="px-4 py-2 border-b border-border/10">
+          <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
+            <span>Μεταφόρτωση…</span>
+            <span>{uploadProgress.done}/{uploadProgress.total}</span>
+          </div>
+          <div className="h-1.5 w-full bg-border/20 rounded-full overflow-hidden">
+            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(uploadProgress.done / uploadProgress.total) * 100}%` }} />
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-danger px-4 py-2">{error}</p>}
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-text-secondary px-4 py-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Φόρτωση…
+        </div>
+      ) : files.length === 0 ? (
+        <p className="text-sm text-text-secondary px-4 py-4">Δεν υπάρχουν παραστατικά.</p>
+      ) : (
+        <div className="divide-y divide-border/10">
+          {files.map(file => (
+            <div key={file.id} className="flex items-center gap-3 px-4 py-2.5">
+              <FileText className="h-4 w-4 text-text-secondary shrink-0" />
+              <span className="flex-1 min-w-0 text-sm text-text-primary truncate">{file.name}</span>
+              <a href={file.webViewLink} target="_blank" rel="noopener noreferrer"
+                className="p-1.5 text-text-secondary hover:text-primary rounded transition-colors" title="Άνοιγμα">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+              <button
+                onClick={() => handleDelete(file.id)}
+                disabled={deletingId === file.id}
+                className="p-1.5 text-text-secondary hover:text-danger rounded transition-colors disabled:opacity-50 cursor-pointer"
+                title="Διαγραφή"
+              >
+                {deletingId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
