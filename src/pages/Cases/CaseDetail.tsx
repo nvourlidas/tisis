@@ -182,7 +182,9 @@ export default function CaseDetail() {
         {tab === 'contacts' && <CaseContacts caseId={caseData.id} tenantId={tenantId} />}
         {tab === 'calls' && <CaseCalls caseId={caseData.id} tenantId={tenantId} />}
         {tab === 'tasks' && <CaseTasks caseId={caseData.id} tenantId={tenantId} caseCode={caseData.code} clientName={caseData.client_name ?? undefined} />}
-        {tab === 'financials' && <CaseFinancials caseId={caseData.id} tenantId={tenantId} />}
+        {tab === 'financials' && (
+          <CaseFinancials caseId={caseData.id} tenantId={tenantId} folderId={caseData.google_drive_folder_id ?? null} />
+        )}
         {tab === 'files' && (
           <CaseFiles
             caseId={caseData.id}
@@ -195,7 +197,9 @@ export default function CaseDetail() {
             }
           />
         )}
-        {tab === 'emails' && <CaseEmails clientEmail={caseData.client_email} />}
+        {tab === 'emails' && (
+          <CaseEmails caseId={caseData.id} clientName={caseData.client_name} clientEmail={caseData.client_email} />
+        )}
       </div>
     </div>
   );

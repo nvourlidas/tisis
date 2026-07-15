@@ -7,6 +7,7 @@ import type { LucideIcon } from 'lucide-react';
 import { LogOut, Menu, ChevronDown, Sun, Moon, Crown, Zap } from 'lucide-react';
 import Logo from '../assets/Logo.png';
 import { useTheme, type ThemeMode } from '../lib/useTheme';
+import GoogleAuthAlert from '../components/GoogleAuthAlert';
 
 type Tenant = { name: string };
 
@@ -47,6 +48,7 @@ export default function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-text-primary flex">
+      <GoogleAuthAlert />
 
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-60 lg:bg-secondary-background lg:border-r lg:border-border/10 lg:sticky lg:top-0 lg:h-screen lg:shrink-0">

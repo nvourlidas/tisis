@@ -2,10 +2,12 @@
  * google-drive-sync
  *
  * Actions:
- *   create-folder — create a Drive folder for a case, stores folder_id back on the case
- *   list-files    — list files in the case's Drive folder
- *   upload-file   — upload a file to the case's Drive folder (multipart/form-data)
- *   delete-file   — delete a file from Drive by fileId
+ *   create-folder            — create a Drive folder for a case, stores folder_id back on the case
+ *   list-files               — list files in the case's Drive folder
+ *   upload-file               — upload a file to the case's Drive folder (multipart/form-data)
+ *   delete-file               — delete a file from Drive by fileId
+ *   create-subfolder          — create a subfolder inside a Drive folder
+ *   find-or-create-subfolder  — return an existing subfolder by name, or create it if missing
  */
 
 import { corsHeaders, json, authenticate } from './auth.ts'
@@ -131,6 +133,31 @@ Deno.serve(async (req) => {
 
     if (action === 'create-subfolder') {
       if (!folderId || !folderName) return json({ error: 'folderId and folderName are required' }, 400)
+
+      const res = await fetch(`${DRIVE_BASE}/files?fields=id,name,mimeType,modifiedTime,webViewLink`, {
+        method: 'POST',
+        headers: { ...authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: folderName,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [folderId],
+        }),
+      })
+      const folder = await res.json()
+      if (!res.ok) throw new Error(folder.error?.message ?? 'Failed to create subfolder')
+      return json({ ok: true, folder })
+    }
+
+    if (action === 'find-or-create-subfolder') {
+      if (!folderId || !folderName) return json({ error: 'folderId and folderName are required' }, 400)
+
+      const escapedName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const q = `'${folderId}' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder' and name = '${escapedName}'`
+      const listParams = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,webViewLink)', pageSize: '1' })
+      const listRes = await fetch(`${DRIVE_BASE}/files?${listParams}`, { headers: authHeader })
+      const listData = await listRes.json()
+      if (!listRes.ok) throw new Error(listData.error?.message ?? 'Failed to search for subfolder')
+      if (listData.files?.length) return json({ ok: true, folder: listData.files[0] })
 
       const res = await fetch(`${DRIVE_BASE}/files?fields=id,name,mimeType,modifiedTime,webViewLink`, {
         method: 'POST',

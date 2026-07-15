@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     await syncCalendar(
       Deno.env.get('SUPABASE_URL')!,
       req.headers.get('Authorization')!,
-      { action: 'update', google_event_id: task?.google_event_id, title: title.trim(), description: description || null, due_date: due_date || null, due_time: due_time || null },
+      { action: 'update', taskId: id, google_event_id: task?.google_event_id, title: title.trim(), description: description || null, due_date: due_date || null, due_time: due_time || null },
     )
     return json({ ok: true })
   } catch (e) { return json({ error: e.message }, 500) }

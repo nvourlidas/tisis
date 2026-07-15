@@ -375,7 +375,7 @@ export default function ClientDetail() {
       </div>}
 
       {/* Emails tab */}
-      {activeTab === 'emails' && <div className="animate-fade-in-up stagger-1"><CaseEmails clientEmail={client.email} /></div>}
+      {activeTab === 'emails' && <div className="animate-fade-in-up stagger-1"><CaseEmails clientName={client.name} clientEmail={client.email} /></div>}
 
       {/* Cases tab */}
       {activeTab === 'cases' && <div className="animate-fade-in-up stagger-1 space-y-3">

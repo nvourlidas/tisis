@@ -50,6 +50,11 @@ export type CaseContact = {
   role: string | null;
 };
 
+export type CaseContactEmail = {
+  label: string;
+  email: string;
+};
+
 export type CaseCall = {
   id: string;
   phone: string | null;
@@ -103,4 +108,7 @@ export type CaseExpense = {
   date: string | null;
   notes: string | null;
   created_at: string;
+  drive_file_id: string | null;
+  drive_file_url: string | null;
+  drive_file_name: string | null;
 };

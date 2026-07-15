@@ -1,18 +1,22 @@
-import { useEffect, useState, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Wallet, Euro, RotateCcw, Plus, Trash2, ChevronDown, ChevronRight, X, Clock, CheckCircle2 } from 'lucide-react';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { TrendingUp, TrendingDown, Wallet, Euro, RotateCcw, Plus, Trash2, ChevronDown, ChevronRight, X, Clock, CheckCircle2, Paperclip, Loader2 } from 'lucide-react';
 import { fetchCaseFees, createCaseFee, deleteCaseFee, createFeePayment, deleteFeePayment, fetchCaseExpenses, createCaseExpense, deleteCaseExpense, fetchCaseTasks, linkTaskToFee } from '../caseUtils';
 import type { CaseFee, FeePayment, CaseExpense, CaseTask } from '../types';
 import { formatDate } from '../../../lib/dateUtils';
 import { fetchCategoryRates, calcTaskAmount, TASK_CATEGORIES } from '../../Tasks/taskUtils';
 import { useAuth } from '../../../auth';
+import { supabase } from '../../../lib/supabase';
+import { callDriveSync, uploadFileToDrive, findOrCreateSubfolder } from '../../../lib/googleDrive';
 
-type Props = { caseId: string; tenantId: string };
+const EXPENSES_SUBFOLDER = 'Έξοδα';
+
+type Props = { caseId: string; tenantId: string; folderId: string | null };
 
 function formatEur(n: number) {
   return new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(n);
 }
 
-export default function CaseFinancials({ caseId, tenantId }: Props) {
+export default function CaseFinancials({ caseId, tenantId, folderId }: Props) {
   const { profile } = useAuth();
   const [fees, setFees] = useState<CaseFee[]>([]);
   const [expenses, setExpenses] = useState<CaseExpense[]>([]);
@@ -73,9 +77,12 @@ export default function CaseFinancials({ caseId, tenantId }: Props) {
     });
   };
 
-  const handleDeleteExpense = async (id: string) => {
+  const handleDeleteExpense = async (exp: CaseExpense) => {
     if (!confirm('Διαγραφή εξόδου;')) return;
-    await deleteCaseExpense(id);
+    await deleteCaseExpense(exp.id);
+    if (exp.drive_file_id) {
+      callDriveSync({ action: 'delete-file', fileId: exp.drive_file_id }).catch(() => {});
+    }
     reload();
   };
 
@@ -328,6 +335,7 @@ export default function CaseFinancials({ caseId, tenantId }: Props) {
             <NewExpenseForm
               tenantId={tenantId}
               caseId={caseId}
+              folderId={folderId}
               onSaved={() => { setShowNewExpense(false); reload(); }}
               onCancel={() => setShowNewExpense(false)}
             />
@@ -345,8 +353,20 @@ export default function CaseFinancials({ caseId, tenantId }: Props) {
                     <span className="text-sm font-semibold text-red-500">{formatEur(exp.amount)}</span>
                     {exp.date && <span className="text-xs text-text-secondary">{formatDate(exp.date)}</span>}
                     {exp.notes && <span className="text-xs text-text-secondary truncate">{exp.notes}</span>}
+                    {exp.drive_file_url && (
+                      <a
+                        href={exp.drive_file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={exp.drive_file_name ?? undefined}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-border/10 text-text-secondary hover:text-primary text-xs max-w-40 truncate"
+                      >
+                        <Paperclip className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{exp.drive_file_name ?? 'Παραστατικό'}</span>
+                      </a>
+                    )}
                   </div>
-                  <button onClick={() => handleDeleteExpense(exp.id)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer shrink-0">
+                  <button onClick={() => handleDeleteExpense(exp)} className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger cursor-pointer shrink-0">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -428,22 +448,57 @@ export default function CaseFinancials({ caseId, tenantId }: Props) {
   );
 }
 
-function NewExpenseForm({ tenantId, caseId, onSaved, onCancel }: {
-  tenantId: string; caseId: string; onSaved: () => void; onCancel: () => void;
+function NewExpenseForm({ tenantId, caseId, folderId, onSaved, onCancel }: {
+  tenantId: string; caseId: string; folderId: string | null; onSaved: () => void; onCancel: () => void;
 }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayStr);
   const [notes, setNotes] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = async () => {
     if (!amount || Number(amount) <= 0) return;
     setSaving(true);
     setError(null);
     try {
-      await createCaseExpense(tenantId, caseId, { amount: Number(amount), date: date || null, notes: notes || undefined });
+      let driveFile: { id: string; name: string; webViewLink: string } | null = null;
+      if (file) {
+        if (!folderId) {
+          setError('Δημιουργήστε πρώτα τον φάκελο Drive της υπόθεσης από την καρτέλα Αρχεία.');
+          setSaving(false);
+          return;
+        }
+        setUploading(true);
+        const { data: { session } } = await supabase.auth.getSession();
+        const subfolder = await findOrCreateSubfolder(folderId, EXPENSES_SUBFOLDER);
+        if (!subfolder.ok || !subfolder.folder?.id) {
+          setError(subfolder.error ?? 'Αποτυχία δημιουργίας υποφακέλου «Έξοδα».');
+          setUploading(false);
+          setSaving(false);
+          return;
+        }
+        const uploadData = await uploadFileToDrive(file, subfolder.folder.id, caseId, session?.access_token ?? '');
+        setUploading(false);
+        if (!uploadData.ok || !uploadData.file) {
+          setError(uploadData.error ?? 'Αποτυχία μεταφόρτωσης αρχείου.');
+          setSaving(false);
+          return;
+        }
+        driveFile = uploadData.file;
+      }
+      await createCaseExpense(tenantId, caseId, {
+        amount: Number(amount),
+        date: date || null,
+        notes: notes || undefined,
+        drive_file_id: driveFile?.id ?? null,
+        drive_file_url: driveFile?.webViewLink ?? null,
+        drive_file_name: driveFile?.name ?? null,
+      });
       onSaved();
     } catch (e: any) {
       setError(e?.message ?? 'Αποτυχία αποθήκευσης.');
@@ -475,13 +530,37 @@ function NewExpenseForm({ tenantId, caseId, onSaved, onCancel }: {
         <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
           placeholder="Περιγραφή εξόδου…" className="input w-full text-sm rounded-xl" />
       </div>
+      <div>
+        <label className="block text-xs text-text-secondary mb-1">Παραστατικό</label>
+        <input ref={fileInputRef} type="file" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+        {file ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-primary">
+            <Paperclip className="h-3.5 w-3.5 text-text-secondary shrink-0" />
+            <span className="flex-1 truncate">{file.name}</span>
+            <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+              className="text-text-secondary hover:text-danger cursor-pointer">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!folderId}
+            title={!folderId ? 'Δημιουργήστε πρώτα τον φάκελο Drive από την καρτέλα Αρχεία' : undefined}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/15 text-xs text-text-secondary hover:text-text-primary hover:bg-border/5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+            Επισύναψη αρχείου στο Drive ({EXPENSES_SUBFOLDER})
+          </button>
+        )}
+      </div>
       {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 rounded-xl text-sm text-text-secondary hover:bg-white/5 cursor-pointer">Ακύρωση</button>
         <button onClick={handleSave} disabled={saving || !amount || Number(amount) <= 0}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-500 cursor-pointer disabled:opacity-50">
-          <Plus className="h-3.5 w-3.5" />
-          {saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+          {uploading ? 'Μεταφόρτωση…' : saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
         </button>
       </div>
     </div>

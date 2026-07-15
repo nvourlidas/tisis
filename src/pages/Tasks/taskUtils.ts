@@ -251,7 +251,7 @@ export async function reopenTask(id: string): Promise<void> {
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  const { error } = await supabase.from('tasks').delete().eq('id', id);
+  const { error } = await supabase.functions.invoke('task-delete', { body: { id } });
   if (error) throw error;
 }
 

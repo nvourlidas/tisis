@@ -114,6 +114,16 @@ Deno.serve(async (req) => {
       .eq('tenant_id', tenantId)
       .maybeSingle()
 
+    if (action === 'check') {
+      if (!tokenRow) return json({ connected: false, valid: false })
+      try {
+        await getAccessToken(tokenRow.refresh_token)
+        return json({ connected: true, valid: true })
+      } catch (e: any) {
+        return json({ connected: true, valid: false, error: e.message })
+      }
+    }
+
     if (!tokenRow) return json({ ok: true, synced: false, reason: 'no_google_token' })
 
     const accessToken = await getAccessToken(tokenRow.refresh_token)
@@ -142,14 +152,40 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'update') {
-      if (!google_event_id) return json({ ok: true, synced: false, reason: 'no_event_id' })
-      const res = await fetch(
-        `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(google_event_id)}`,
-        { method: 'PUT', headers, body: JSON.stringify(buildEventBody(title, description, due_date, due_time ?? null)) },
-      )
+      const eventBody = buildEventBody(title, description, due_date, due_time ?? null)
+
+      if (google_event_id) {
+        const res = await fetch(
+          `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(google_event_id)}`,
+          { method: 'PUT', headers, body: JSON.stringify(eventBody) },
+        )
+        if (res.ok) return json({ ok: true, synced: true })
+        if (res.status !== 404) {
+          const err = await res.json()
+          throw new Error(err.error?.message ?? 'Failed to update calendar event')
+        }
+        // Event was removed on the Google side — fall through and recreate it below
+      }
+
+      // No event yet (task predates calendar sync, or the event was deleted in Google Calendar)
+      const recordId = taskId ?? callId
+      const table = callId ? 'calls' : 'tasks'
+      if (!recordId || !title) return json({ ok: true, synced: false, reason: 'no_event_id' })
+      const res = await fetch(`${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(eventBody),
+      })
       const event = await res.json()
-      if (!res.ok) throw new Error(event.error?.message ?? 'Failed to update calendar event')
-      return json({ ok: true, synced: true })
+      if (!res.ok) throw new Error(event.error?.message ?? 'Failed to create calendar event')
+
+      await supabase
+        .from(table)
+        .update({ google_event_id: event.id })
+        .eq('id', recordId)
+        .eq('tenant_id', tenantId)
+
+      return json({ ok: true, synced: true, google_event_id: event.id })
     }
 
     if (action === 'delete') {

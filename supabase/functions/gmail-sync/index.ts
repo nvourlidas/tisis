@@ -61,13 +61,19 @@ Deno.serve(async (req) => {
     }
     const authHeader = { Authorization: `Bearer ${accessToken}` }
 
-    const { action, clientEmail, threadId } = await req.json()
+    const { action, clientEmail, emails, threadId } = await req.json()
 
     if (action === 'list-threads') {
-      if (!clientEmail) return json({ error: 'clientEmail is required' }, 400)
+      const emailList: string[] = Array.isArray(emails) && emails.length > 0
+        ? emails
+        : (clientEmail ? [clientEmail] : [])
+      if (emailList.length === 0) return json({ error: 'emails is required' }, 400)
+
+      const uniqueEmails = [...new Set(emailList.map((e) => e.toLowerCase()))].slice(0, 15)
+      const q = uniqueEmails.map((e) => `(from:${e} OR to:${e})`).join(' OR ')
 
       const params = new URLSearchParams({
-        q: `from:${clientEmail} OR to:${clientEmail}`,
+        q,
         maxResults: '30',
       })
       const listRes = await fetch(`${GMAIL_BASE}/threads?${params}`, { headers: authHeader })

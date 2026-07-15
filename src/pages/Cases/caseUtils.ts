@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import type { Case, CaseFormData, CaseContact, CaseCall, CaseTask, CaseFee, CaseExpense, CaseStatus, CaseStage } from './types';
+import type { Case, CaseFormData, CaseContact, CaseContactEmail, CaseCall, CaseTask, CaseFee, CaseExpense, CaseStatus, CaseStage } from './types';
 
 const CASE_SELECT = '*, clients(name, email), case_stages(name)';
 function mapCase(r: any): Case {
@@ -152,6 +152,23 @@ export async function fetchCaseContacts(caseId: string): Promise<CaseContact[]> 
   }));
 }
 
+export async function fetchCaseContactEmails(caseId: string): Promise<CaseContactEmail[]> {
+  const { data, error } = await supabase
+    .from('case_contacts')
+    .select('contacts(name, email, email2, email3, email4)')
+    .eq('case_id', caseId);
+  if (error) throw error;
+  const out: CaseContactEmail[] = [];
+  for (const r of (data ?? []) as any[]) {
+    const c = r.contacts;
+    if (!c) continue;
+    for (const email of [c.email, c.email2, c.email3, c.email4]) {
+      if (email) out.push({ label: c.name, email });
+    }
+  }
+  return out;
+}
+
 export async function addContactToCase(caseId: string, contactId: string, role?: string): Promise<void> {
   const { error } = await supabase
     .from('case_contacts')
@@ -290,15 +307,22 @@ export async function createCaseExpense(tenantId: string, caseId: string, expens
   amount: number;
   date: string | null;
   notes?: string;
-}): Promise<void> {
-  const { error } = await supabase.from('case_expenses').insert({
+  drive_file_id?: string | null;
+  drive_file_url?: string | null;
+  drive_file_name?: string | null;
+}): Promise<CaseExpense> {
+  const { data, error } = await supabase.from('case_expenses').insert({
     tenant_id: tenantId,
     case_id: caseId,
     amount: expense.amount,
     date: expense.date || null,
     notes: expense.notes || null,
-  });
+    drive_file_id: expense.drive_file_id ?? null,
+    drive_file_url: expense.drive_file_url ?? null,
+    drive_file_name: expense.drive_file_name ?? null,
+  }).select().single();
   if (error) throw error;
+  return data;
 }
 
 export async function deleteCaseExpense(id: string): Promise<void> {

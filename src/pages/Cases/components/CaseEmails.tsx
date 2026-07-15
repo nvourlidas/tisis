@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Mail, ChevronDown, ChevronRight, RefreshCw, Loader2, ExternalLink } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { fetchCaseContactEmails } from '../caseUtils';
+import type { CaseContactEmail } from '../types';
 
 interface EmailThread {
   id: string;
@@ -21,7 +23,18 @@ interface ThreadMessage {
 }
 
 interface Props {
-  clientEmail: string | null | undefined;
+  caseId?: string;
+  clientName?: string | null;
+  clientEmail?: string | null;
+}
+
+function matchLabels(thread: EmailThread, entries: CaseContactEmail[]): string[] {
+  const haystack = `${thread.from} ${thread.to}`.toLowerCase();
+  const labels = new Set<string>();
+  for (const e of entries) {
+    if (haystack.includes(e.email.toLowerCase())) labels.add(e.label);
+  }
+  return [...labels];
 }
 
 async function callGmailSync(body: Record<string, unknown>) {
@@ -49,7 +62,9 @@ function stripName(emailFull: string) {
   return match ? match[1] : emailFull;
 }
 
-export default function CaseEmails({ clientEmail }: Props) {
+export default function CaseEmails({ caseId, clientName, clientEmail }: Props) {
+  const [entries, setEntries] = useState<CaseContactEmail[]>([]);
+  const [entriesLoading, setEntriesLoading] = useState(true);
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [noToken, setNoToken] = useState(false);
@@ -57,16 +72,38 @@ export default function CaseEmails({ clientEmail }: Props) {
   const [expandedThread, setExpandedThread] = useState<string | null>(null);
   const [threadMessages, setThreadMessages] = useState<Record<string, ThreadMessage[]>>({});
   const [loadingThread, setLoadingThread] = useState<string | null>(null);
+  const [filterLabel, setFilterLabel] = useState<string | null>(null);
 
   useEffect(() => {
-    if (clientEmail) load();
-  }, [clientEmail]);
+    let cancelled = false;
+    setEntriesLoading(true);
+    (async () => {
+      const contactEntries = caseId ? await fetchCaseContactEmails(caseId) : [];
+      const all: CaseContactEmail[] = clientEmail
+        ? [{ label: clientName || 'Πελάτης', email: clientEmail }, ...contactEntries]
+        : contactEntries;
+      const seen = new Set<string>();
+      const deduped = all.filter((e) => {
+        const key = e.email.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (!cancelled) { setEntries(deduped); setEntriesLoading(false); setFilterLabel(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [caseId, clientEmail, clientName]);
+
+  useEffect(() => {
+    if (!entriesLoading && entries.length > 0) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entriesLoading, entries]);
 
   async function load() {
-    if (!clientEmail) return;
+    if (entries.length === 0) return;
     setLoading(true);
     try {
-      const data = await callGmailSync({ action: 'list-threads', clientEmail });
+      const data = await callGmailSync({ action: 'list-threads', emails: entries.map((e) => e.email) });
       if (data.reason === 'no_google_token') { setNoToken(true); return; }
       if (data.reason === 'token_expired' || (data.error && /expired|revoked|invalid_grant/i.test(data.error))) { setTokenExpired(true); return; }
       if (data.ok) setThreads(data.threads ?? []);
@@ -74,6 +111,11 @@ export default function CaseEmails({ clientEmail }: Props) {
       setLoading(false);
     }
   }
+
+  const visibleThreads = useMemo(() => {
+    if (!filterLabel) return threads;
+    return threads.filter((t) => matchLabels(t, entries).includes(filterLabel));
+  }, [threads, entries, filterLabel]);
 
   async function toggleThread(threadId: string) {
     if (expandedThread === threadId) {
@@ -91,10 +133,18 @@ export default function CaseEmails({ clientEmail }: Props) {
     }
   }
 
-  if (!clientEmail) {
+  if (entriesLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-text-secondary py-4">
+        <Loader2 className="h-4 w-4 animate-spin" /> Φόρτωση…
+      </div>
+    );
+  }
+
+  if (entries.length === 0) {
     return (
       <div className="text-sm text-text-secondary py-4">
-        Ο πελάτης δεν έχει καταχωρημένη διεύθυνση email.
+        Δεν υπάρχει καταχωρημένη διεύθυνση email ούτε στον πελάτη ούτε στις συνδεδεμένες επαφές.
       </div>
     );
   }
@@ -145,10 +195,30 @@ export default function CaseEmails({ clientEmail }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-text-secondary">
-          Email με: <span className="font-medium text-text-primary">{clientEmail}</span>
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-text-secondary">Φίλτρο:</span>
+          <button
+            onClick={() => setFilterLabel(null)}
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+              filterLabel === null ? 'bg-primary/15 text-primary' : 'bg-border/10 text-text-primary hover:bg-border/20'
+            }`}
+          >
+            Όλοι
+          </button>
+          {[...new Set(entries.map((e) => e.label))].map((label) => (
+            <button
+              key={label}
+              onClick={() => setFilterLabel((prev) => (prev === label ? null : label))}
+              title={entries.find((e) => e.label === label)?.email}
+              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                filterLabel === label ? 'bg-primary/15 text-primary' : 'bg-border/10 text-text-primary hover:bg-border/20'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={load}
           disabled={loading}
@@ -163,11 +233,13 @@ export default function CaseEmails({ clientEmail }: Props) {
         <div className="flex items-center gap-2 text-sm text-text-secondary py-4">
           <Loader2 className="h-4 w-4 animate-spin" /> Φόρτωση email…
         </div>
-      ) : threads.length === 0 ? (
-        <div className="text-sm text-text-secondary py-4">Δεν βρέθηκαν email με αυτή την επαφή.</div>
+      ) : visibleThreads.length === 0 ? (
+        <div className="text-sm text-text-secondary py-4">
+          {threads.length === 0 ? 'Δεν βρέθηκαν email με αυτή την επαφή.' : 'Δεν βρέθηκαν email για αυτό το φίλτρο.'}
+        </div>
       ) : (
         <div className="divide-y divide-border/10">
-          {threads.map((thread) => (
+          {visibleThreads.map((thread) => (
             <div key={thread.id} className="py-2.5">
               <button
                 onClick={() => toggleThread(thread.id)}
@@ -184,13 +256,18 @@ export default function CaseEmails({ clientEmail }: Props) {
                     <p className="text-sm font-medium text-text-primary truncate">{thread.subject}</p>
                     <span className="text-xs text-text-secondary shrink-0">{formatDate(thread.date)}</span>
                   </div>
-                  <p className="text-xs text-text-secondary truncate mt-0.5">
-                    {stripName(thread.from)}
+                  <p className="text-xs text-text-secondary truncate mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>{stripName(thread.from)}</span>
                     {thread.messageCount > 1 && (
-                      <span className="ml-1.5 bg-border/10 text-text-secondary px-1.5 py-0.5 rounded-full text-[10px]">
+                      <span className="bg-border/10 text-text-secondary px-1.5 py-0.5 rounded-full text-[10px] shrink-0">
                         {thread.messageCount}
                       </span>
                     )}
+                    {matchLabels(thread, entries).map((label) => (
+                      <span key={label} className="bg-primary/10 text-primary px-1.5 py-0.5 rounded-full text-[10px] shrink-0">
+                        {label}
+                      </span>
+                    ))}
                   </p>
                   {expandedThread !== thread.id && (
                     <p className="text-xs text-text-secondary mt-0.5 truncate opacity-70">{thread.snippet}</p>
