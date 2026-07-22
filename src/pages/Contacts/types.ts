@@ -60,4 +60,5 @@ export type ContactCase = {
   code: string;
   title: string;
   status: string;
+  role: string | null;
 };

@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { useNavigate, useNavigationType } from 'react-router-dom';
 import {
   Plus, Check, RotateCcw, AlertCircle,
   X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, RefreshCw, Link2, Search, Phone, Users, Trash2, Mail,
@@ -76,6 +76,7 @@ const CATEGORY_COLORS: Record<TaskCategory, string> = {
 export default function Tasks() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   const tenantId = profile?.tenant_id ?? '';
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -137,11 +138,30 @@ export default function Tasks() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayDate = new Date(todayStr + 'T00:00:00');
 
+  const LAST_DAY_KEY = 'tasks-last-selected-day';
+  const storedDay = navigationType === 'POP' ? sessionStorage.getItem(LAST_DAY_KEY) : null;
+  const initialDay = storedDay ?? todayStr;
+  const initialDate = new Date(initialDay + 'T00:00:00');
+
   const [view, setView] = useState<CalendarView>('month');
-  const [year, setYear] = useState(todayDate.getFullYear());
-  const [month, setMonth] = useState(todayDate.getMonth());
-  const [selectedDay, setSelectedDay] = useState<string | null>(todayStr);
-  const [anchor, setAnchor] = useState<string>(todayStr);
+  const [year, setYear] = useState(initialDate.getFullYear());
+  const [month, setMonth] = useState(initialDate.getMonth());
+  const [selectedDay, setSelectedDay] = useState<string | null>(initialDay);
+  const [anchor, setAnchor] = useState<string>(initialDay);
+  const todayCellRef = useRef<HTMLButtonElement>(null);
+  const selectedCellRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (selectedDay) sessionStorage.setItem(LAST_DAY_KEY, selectedDay);
+  }, [selectedDay]);
+
+  useEffect(() => {
+    if (loading || view !== 'month') return;
+    const target = selectedDay && year === new Date(selectedDay + 'T00:00:00').getFullYear() && month === new Date(selectedDay + 'T00:00:00').getMonth()
+      ? selectedCellRef.current
+      : todayCellRef.current;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [loading, view, year, month]);
 
   const load = (y: number, m: number) => {
     if (!tenantId) return;
@@ -699,7 +719,7 @@ export default function Tasks() {
                   const isToday = ds === todayStr;
                   const isSelected = ds === selectedDay;
                   return (
-                    <button key={ds} onClick={() => setSelectedDay(isSelected ? null : ds)}
+                    <button key={ds} ref={el => { if (isToday) todayCellRef.current = el; if (isSelected) selectedCellRef.current = el; }} onClick={() => setSelectedDay(isSelected ? null : ds)}
                       className={['relative min-h-32 rounded-lg p-1.5 text-left transition-colors cursor-pointer flex flex-col gap-1 overflow-visible',
                         isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/4',
                         isToday ? 'ring-1 ring-primary/50' : ''].join(' ')}>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Mail, FileText, MapPin, Pencil, Check, X,
@@ -9,9 +9,12 @@ import { formatDate } from '../../lib/dateUtils';
 import { useAuth } from '../../auth';
 import { supabase } from '../../lib/supabase';
 import { fetchContact, fetchContactCases, updateContact, deleteContact, fetchLinkedClient, promoteContactToClient, mergeNotesWithAutoBlock } from './contactUtils';
+import { fetchContactRoles } from '../../lib/roleUtils';
+import type { ContactRole } from '../../lib/roleUtils';
 import { fetchCallsByContact, searchCallsForLinking, updateCall } from '../Calls/callUtils';
 import type { Call } from '../Calls/types';
 import NewCallModal from '../Calls/modals/NewCallModal';
+import CaseEmails from '../Cases/components/CaseEmails';
 import type { Contact, ContactCase } from './types';
 import type { Client } from '../Clients/types';
 
@@ -67,8 +70,9 @@ export default function ContactDetail() {
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [cases, setCases] = useState<ContactCase[]>([]);
+  const [roles, setRoles] = useState<ContactRole[]>([]);
   const [calls, setCalls] = useState<Call[]>([]);
-  const [activeTab, setActiveTab] = useState<'cases' | 'events'>('cases');
+  const [activeTab, setActiveTab] = useState<'info' | 'cases' | 'events' | 'emails'>('info');
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [linkQuery, setLinkQuery] = useState('');
@@ -99,6 +103,13 @@ export default function ContactDetail() {
       })
       .finally(() => setLoading(false));
   }, [id, tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    fetchContactRoles(tenantId).then(setRoles);
+  }, [tenantId]);
+
+  const roleMap = useMemo(() => new Map(roles.map(r => [r.name, r])), [roles]);
 
   const startEdit = () => {
     if (!contact) return;
@@ -335,8 +346,30 @@ export default function ContactDetail() {
         </div>
       )}
 
-      {/* Info */}
-      <div className="animate-fade-in-up stagger-1 rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
+      {/* Tabs */}
+      <div className="animate-fade-in-up flex gap-1 border-b border-border/10">
+        {([
+          ['info', 'Στοιχεία'],
+          ['cases', `Υποθέσεις${cases.length > 0 ? ` (${cases.length})` : ''}`],
+          ['events', `Γεγονότα${calls.length > 0 ? ` (${calls.length})` : ''}`],
+          ['emails', 'Email'],
+        ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer ${
+              activeTab === tab
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Info tab */}
+      {activeTab === 'info' && <div className="animate-fade-in-up stagger-1 rounded-xl border border-border/10 bg-secondary-background p-5 space-y-4">
         {editing ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Phones */}
@@ -444,28 +477,10 @@ export default function ContactDetail() {
             )}
           </>
         )}
-      </div>
+      </div>}
 
-      {/* Tabs: Cases / Γεγονότα */}
+      {/* Cases / Events / Emails tabs */}
       <div className="animate-fade-in-up stagger-2 space-y-3">
-        <div className="flex gap-1 border-b border-border/10">
-          {(['cases', 'events'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px ${
-                activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {tab === 'cases'
-                ? <>Υποθέσεις <span className="ml-1 text-xs opacity-60">({cases.length})</span></>
-                : <>Γεγονότα <span className="ml-1 text-xs opacity-60">({calls.length})</span></>}
-            </button>
-          ))}
-        </div>
-
         {activeTab === 'cases' && (
           cases.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-8 text-text-secondary">
@@ -481,6 +496,7 @@ export default function ContactDetail() {
                   <tr className="bg-white/3 border-b border-border/10 text-text-secondary text-xs uppercase tracking-wider">
                     <th className="text-left px-4 py-2.5 font-medium">Κωδικός</th>
                     <th className="text-left px-4 py-2.5 font-medium">Τίτλος</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Ρόλος</th>
                     <th className="text-left px-4 py-2.5 font-medium">Κατάσταση</th>
                   </tr>
                 </thead>
@@ -493,6 +509,24 @@ export default function ContactDetail() {
                     >
                       <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{c.code}</td>
                       <td className="px-4 py-2.5 text-text-primary">{c.title}</td>
+                      <td className="px-4 py-2.5">
+                        {c.role ? (() => {
+                          const r = roleMap.get(c.role!);
+                          return r ? (
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                              style={{ backgroundColor: r.color + '25', color: r.color }}
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                              {c.role}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-text-secondary">{c.role}</span>
+                          );
+                        })() : (
+                          <span className="text-xs text-text-secondary">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status] ?? STATUS_BADGE.closed}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[c.status] ?? 'bg-border'}`} />
@@ -647,6 +681,10 @@ export default function ContactDetail() {
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'emails' && (
+          <CaseEmails clientName={contact.name} clientEmail={contact.email} />
         )}
       </div>
 

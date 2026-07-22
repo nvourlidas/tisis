@@ -53,13 +53,33 @@ function extractTime(event: any): string | null {
   return timePart.slice(0, 5) // "HH:MM"
 }
 
+// Events created from a call (see google-calendar-sync) are tagged tisisSource: 'call' —
+// they already exist as `calls` rows and must not be pulled back in as tasks.
+function isCallEvent(event: any): boolean {
+  return event.extendedProperties?.private?.tisisSource === 'call'
+}
+
 async function processPage(
   supabase: any,
   tenantId: string,
   items: any[],
 ): Promise<number> {
-  const toUpsert = items.filter((e) => e.status !== 'cancelled' && e.summary)
-  const toCancelIds = items.filter((e) => e.status === 'cancelled').map((e) => e.id)
+  // Defensive net for events created before source-tagging existed: also exclude any
+  // event id that's already linked to a call.
+  const candidateIds = items.filter((e) => !isCallEvent(e)).map((e) => e.id)
+  let knownCallEventIds = new Set<string>()
+  if (candidateIds.length > 0) {
+    const { data: linkedCalls } = await supabase
+      .from('calls')
+      .select('google_event_id')
+      .eq('tenant_id', tenantId)
+      .in('google_event_id', candidateIds)
+    knownCallEventIds = new Set((linkedCalls ?? []).map((c: any) => c.google_event_id))
+  }
+
+  const relevant = items.filter((e) => !isCallEvent(e) && !knownCallEventIds.has(e.id))
+  const toUpsert = relevant.filter((e) => e.status !== 'cancelled' && e.summary)
+  const toCancelIds = relevant.filter((e) => e.status === 'cancelled').map((e) => e.id)
 
   if (toCancelIds.length > 0) {
     await supabase

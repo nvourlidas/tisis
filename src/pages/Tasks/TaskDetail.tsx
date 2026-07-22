@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Check, Clock, Tag, CalendarDays, Briefcase, User,
-  Link2, Pencil, RotateCcw, AlertCircle, X, Plus, Search,
+  Link2, Pencil, RotateCcw, AlertCircle, X, Plus, Search, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { formatDate } from '../../lib/dateUtils';
 import {
-  fetchTask, fetchLinkedTasksFull, completeTask, reopenTask, updateTask, updateTaskHours,
+  fetchTask, fetchLinkedTasksFull, completeTask, reopenTask, updateTask, updateTaskHours, deleteTask,
   addTaskLink, removeTaskLink, searchFullTasks, createTask,
   fetchCategoryRates, calcTaskAmount,
   TASK_CATEGORIES,
@@ -38,6 +38,10 @@ export default function TaskDetail() {
   const [editingHours, setEditingHours] = useState(false);
   const [hoursInput, setHoursInput] = useState('');
   const [savingHours, setSavingHours] = useState(false);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleAddLink = async (target: Task) => {
     if (!id) return;
@@ -101,6 +105,20 @@ export default function TaskDetail() {
       await load();
     } finally {
       setToggling(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!task) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteTask(task.id);
+      navigate('/tasks');
+    } catch (e: any) {
+      setDeleteError(e?.message ?? 'Αποτυχία διαγραφής.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -192,13 +210,22 @@ export default function TaskDetail() {
               {task.title}
             </h1>
           </div>
-          <button
-            onClick={() => setEditing(true)}
-            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Επεξεργασία
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/20 bg-white/4 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-white/8 transition-all cursor-pointer"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Επεξεργασία
+            </button>
+            <button
+              onClick={() => { setShowDeleteConfirm(true); setDeleteError(null); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/20 bg-red-500/5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all cursor-pointer"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Διαγραφή
+            </button>
+          </div>
         </div>
 
         {/* Status + category chips */}
@@ -431,6 +458,42 @@ export default function TaskDetail() {
                 submitLabel="Δημιουργία"
                 hideLinkedTasks
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !deleting && setShowDeleteConfirm(false)} />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border/20 bg-secondary-background shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-red-500/10 text-red-400 flex items-center justify-center shrink-0">
+                <Trash2 className="h-4 w-4" />
+              </div>
+              <h2 className="text-sm font-semibold text-text-primary">Διαγραφή Εργασίας</h2>
+            </div>
+            <p className="text-sm text-text-secondary">
+              Είστε σίγουροι ότι θέλετε να διαγράψετε την εργασία «{task.title}»; Η ενέργεια αυτή δεν αναιρείται.
+            </p>
+            {deleteError && <p className="text-xs text-red-400">{deleteError}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-4 py-1.5 text-xs font-medium rounded-lg border border-border/20 text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Ακύρωση
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-500/90 disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {deleting && <RotateCcw className="h-3 w-3 animate-spin" />}
+                Διαγραφή
+              </button>
             </div>
           </div>
         </div>

@@ -331,7 +331,7 @@ export default function CaseTasks({ caseId, tenantId = '', caseCode, clientName 
             </button>
           </div>
           <TaskForm
-            tenantId=""
+            tenantId={tenantId}
             hideCaseField
             initial={{ case_code: caseCode, case_client_name: clientName }}
             saving={creating}
@@ -344,6 +344,7 @@ export default function CaseTasks({ caseId, tenantId = '', caseCode, clientName 
 
       <EditTaskModal
         task={editingTask}
+        tenantId={tenantId}
         saving={saving}
         error={saveError}
         initialValues={editingTask ? caseTaskToFormValues(editingTask) : undefined}
@@ -605,8 +606,9 @@ function TaskListView({ tasks, todayStr, toggling, rates, onToggle, onEdit, onDe
 
 // ── Edit task modal ───────────────────────────────────────────────────────────
 
-function EditTaskModal({ task, saving, error, initialValues, onSubmit, onClose }: {
+function EditTaskModal({ task, tenantId, saving, error, initialValues, onSubmit, onClose }: {
   task: CaseTask | null;
+  tenantId: string;
   saving: boolean;
   error: string | null;
   initialValues?: TaskFormValues;
@@ -627,7 +629,7 @@ function EditTaskModal({ task, saving, error, initialValues, onSubmit, onClose }
         <div className="p-6">
           <TaskForm
             key={task.id}
-            tenantId=""
+            tenantId={tenantId}
             hideCaseField
             initial={initialValues}
             saving={saving}

@@ -63,10 +63,12 @@ async function ensureCalendar(accessToken: string, tenantId: string, supabase: a
   return cal.id
 }
 
-function buildEventBody(title: string, description: string | null, due_date: string | null, due_time: string | null) {
+function buildEventBody(title: string, description: string | null, due_date: string | null, due_time: string | null, source: 'task' | 'call') {
   const dateStr = due_date
     ? new Date(due_date).toISOString().split('T')[0]
     : new Date().toISOString().split('T')[0]
+
+  const extendedProperties = { private: { tisisSource: source } }
 
   if (due_time) {
     const [hStr, mStr] = due_time.split(':')
@@ -88,6 +90,7 @@ function buildEventBody(title: string, description: string | null, due_date: str
       description: description ?? undefined,
       start: { dateTime: startDT, timeZone: 'Europe/Athens' },
       end: { dateTime: endDT, timeZone: 'Europe/Athens' },
+      extendedProperties,
     }
   }
 
@@ -96,6 +99,7 @@ function buildEventBody(title: string, description: string | null, due_date: str
     description: description ?? undefined,
     start: { date: dateStr },
     end: { date: dateStr },
+    extendedProperties,
   }
 }
 
@@ -137,7 +141,7 @@ Deno.serve(async (req) => {
       const res = await fetch(`${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(buildEventBody(title, description, due_date, due_time ?? null)),
+        body: JSON.stringify(buildEventBody(title, description, due_date, due_time ?? null, callId ? 'call' : 'task')),
       })
       const event = await res.json()
       if (!res.ok) throw new Error(event.error?.message ?? 'Failed to create calendar event')
@@ -152,7 +156,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'update') {
-      const eventBody = buildEventBody(title, description, due_date, due_time ?? null)
+      const eventBody = buildEventBody(title, description, due_date, due_time ?? null, callId ? 'call' : 'task')
 
       if (google_event_id) {
         const res = await fetch(

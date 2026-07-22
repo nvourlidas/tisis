@@ -409,7 +409,7 @@ export default function CaseFinancials({ caseId, tenantId, folderId }: Props) {
                       {isDone && <CheckCircle2 className="h-3 w-3 text-white" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm truncate ${isDone ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
+                      <p className={`text-sm truncate ${isDone ? 'text-text-secondary' : 'text-text-primary'}`}>
                         {t.title}
                       </p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">

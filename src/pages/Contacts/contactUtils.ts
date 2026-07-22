@@ -73,7 +73,7 @@ export async function searchContacts(tenantId: string, query: string): Promise<C
 export async function fetchContactCases(contactId: string): Promise<ContactCase[]> {
   const { data, error } = await supabase
     .from('case_contacts')
-    .select('case_id, cases(code, title, status)')
+    .select('case_id, role, cases(code, title, status)')
     .eq('contact_id', contactId);
   if (error) throw error;
   return (data ?? []).map((row: any) => ({
@@ -81,6 +81,7 @@ export async function fetchContactCases(contactId: string): Promise<ContactCase[
     code: row.cases?.code ?? '',
     title: row.cases?.title ?? '',
     status: row.cases?.status ?? '',
+    role: row.role ?? null,
   }));
 }
 
