@@ -1025,7 +1025,9 @@ function CallRow({ call, onNavigate, onEdit, onDelete }: {
           {isPhone ? <Phone className="h-3.5 w-3.5" /> : call.direction === 'email' ? <Mail className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-text-primary">{call.caller_name ?? call.phone ?? 'Άγνωστος'}</p>
+          <button onClick={() => onNavigate(`/calls/${call.id}`)} className="text-left hover:underline cursor-pointer">
+            <p className="text-sm font-medium text-text-primary">{call.caller_name ?? call.phone ?? 'Άγνωστος'}</p>
+          </button>
           {call.phone && call.caller_name && <p className="text-xs text-text-secondary">{call.phone}</p>}
           {call.description && <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{call.description}</p>}
           {call.case_code && (
