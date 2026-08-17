@@ -249,8 +249,11 @@ export default function Tasks() {
     try {
       const { data, error } = await supabase.functions.invoke('google-calendar-import', { body: {} });
       if (error) throw error;
-      setSyncMsg(data.imported > 0 ? `Συγχρονίστηκαν ${data.imported} εργασίες.` : 'Δεν υπάρχουν εργασίες για συγχρονισμό.');
-      if (data.imported > 0) load(year, month);
+      const parts: string[] = [];
+      if (data.imported > 0) parts.push(`${data.imported} συγχρονίστηκαν`);
+      if (data.deleted > 0) parts.push(`${data.deleted} διαγράφηκαν`);
+      setSyncMsg(parts.length > 0 ? parts.join(' · ') : 'Δεν υπάρχουν αλλαγές για συγχρονισμό.');
+      if (data.imported > 0 || data.deleted > 0) load(year, month);
     } catch (e: any) {
       setSyncMsg(e?.message ?? 'Αποτυχία συγχρονισμού.');
     } finally {
