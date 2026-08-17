@@ -38,25 +38,59 @@ async function getAccessToken(refreshToken: string): Promise<string> {
 
 class SyncTokenExpiredError extends Error {}
 
+// Google returns start.dateTime in UTC ("...Z") since events.list/get here isn't passed
+// a timeZone query param — convert to Athens wall-clock before slicing, otherwise every
+// timed event comes back shifted by the UTC/Athens offset (3h in summer, 2h in winter).
+function toAthensDateTimeParts(dateTime: string): { date: string; time: string } {
+  const d = new Date(dateTime)
+  const date = d.toLocaleDateString('en-CA', { timeZone: 'Europe/Athens' })
+  const time = d.toLocaleTimeString('en-GB', { timeZone: 'Europe/Athens', hour: '2-digit', minute: '2-digit', hour12: false })
+  return { date, time }
+}
+
 function extractDate(event: any): string | null {
-  const raw = event.start?.dateTime ?? event.start?.date
-  if (!raw) return null
-  return raw.split('T')[0]
+  if (event.start?.dateTime) return toAthensDateTimeParts(event.start.dateTime).date
+  return event.start?.date ?? null
 }
 
 function extractTime(event: any): string | null {
-  const raw = event.start?.dateTime
-  if (!raw) return null
-  // dateTime is like "2026-06-02T09:30:00+03:00" or "2026-06-02T09:30:00"
-  const timePart = raw.split('T')[1]
-  if (!timePart) return null
-  return timePart.slice(0, 5) // "HH:MM"
+  if (!event.start?.dateTime) return null
+  return toAthensDateTimeParts(event.start.dateTime).time
 }
 
 // Events created from a call (see google-calendar-sync) are tagged tisisSource: 'call' —
-// they already exist as `calls` rows and must not be pulled back in as tasks.
+// they already exist as `calls` rows and must not be pulled back in as tasks; edits to
+// them are instead pushed back onto the linked `calls` row (see upsertCallEvents below).
 function isCallEvent(event: any): boolean {
   return event.extendedProperties?.private?.tisisSource === 'call'
+}
+
+// Titles are generated as "<dirLabel>: <caller_name-or-phone>" by google-calendar-sync
+// (e.g. "Κλήση: Γιώργος Παπαδόπουλος"). Direction itself isn't recoverable (incoming vs
+// outgoing both render as "Κλήση"), so only the name/phone portion is extracted.
+function extractCallerName(event: any): string | null {
+  const summary: string | undefined = event.summary
+  if (!summary) return null
+  const idx = summary.indexOf(': ')
+  const name = idx === -1 ? summary : summary.slice(idx + 2)
+  const trimmed = name.trim()
+  return trimmed && trimmed !== 'Άγνωστος' ? trimmed : null
+}
+
+async function upsertCallEvents(supabase: any, tenantId: string, items: any[]): Promise<number> {
+  if (items.length === 0) return 0
+  const { data, error } = await supabase.rpc('upsert_google_calls', {
+    p_tenant_id: tenantId,
+    p_events: items.map((e) => ({
+      google_event_id: e.id,
+      caller_name: extractCallerName(e),
+      description: e.description ?? null,
+      due_date: extractDate(e),
+      due_time: extractTime(e),
+    })),
+  })
+  if (error) throw new Error(error.message)
+  return data ?? 0
 }
 
 async function processPage(
@@ -77,6 +111,10 @@ async function processPage(
     knownCallEventIds = new Set((linkedCalls ?? []).map((c: any) => c.google_event_id))
   }
 
+  const callItems = items.filter((e) => isCallEvent(e) || knownCallEventIds.has(e.id))
+  const callUpdates = callItems.filter((e) => e.status !== 'cancelled' && e.summary)
+  const callsUpdated = await upsertCallEvents(supabase, tenantId, callUpdates)
+
   const relevant = items.filter((e) => !isCallEvent(e) && !knownCallEventIds.has(e.id))
   const toUpsert = relevant.filter((e) => e.status !== 'cancelled' && e.summary)
   const toCancelIds = relevant.filter((e) => e.status === 'cancelled').map((e) => e.id)
@@ -89,7 +127,7 @@ async function processPage(
       .in('google_event_id', toCancelIds)
   }
 
-  if (toUpsert.length === 0) return 0
+  if (toUpsert.length === 0) return callsUpdated
 
   // Single SQL upsert: inserts new events, updates content fields on existing ones.
   // ON CONFLICT only touches title/description/due_date/due_time — never status.
@@ -105,7 +143,7 @@ async function processPage(
   })
   if (error) throw new Error(error.message)
 
-  return data ?? 0
+  return (data ?? 0) + callsUpdated
 }
 
 async function syncCalendar(
