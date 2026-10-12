@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Users, X, Link, Phone, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { fetchCaseCalls } from '../caseUtils';
 import { fetchUnlinkedCalls, linkCallToCase, deleteCall } from '../../Calls/callUtils';
@@ -12,6 +13,7 @@ type Props = { caseId: string; tenantId: string };
 type Mode = 'none' | 'new' | 'link';
 
 export default function CaseCalls({ caseId, tenantId }: Props) {
+  const navigate = useNavigate();
   const [calls, setCalls] = useState<CaseCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<Mode>('none');
@@ -166,14 +168,18 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
       ) : (
         <div className="space-y-2">
           {calls.map((call) => (
-            <div key={call.id} className="rounded-xl border border-border/10 bg-secondary-background p-4 hover:border-border/20 transition-colors group">
+            <div
+              key={call.id}
+              onClick={() => navigate(`/calls/${call.id}`)}
+              className="rounded-xl border border-border/10 bg-secondary-background p-4 hover:border-border/20 transition-colors group cursor-pointer"
+            >
               <div className="flex items-start gap-3">
                 <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${call.direction === 'phone' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
                   {call.direction === 'phone' ? <Phone className="h-4 w-4" /> : <Users className="h-4 w-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    {call.caller_name && <span className="text-sm font-semibold text-text-primary">{call.caller_name}</span>}
+                    {call.caller_name && <span className="text-sm font-semibold text-text-primary group-hover:underline">{call.caller_name}</span>}
                     {call.phone && <span className="text-sm text-text-secondary font-mono">{call.phone}</span>}
                     {call.follow_up_required && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-500">
@@ -186,7 +192,7 @@ export default function CaseCalls({ caseId, tenantId }: Props) {
                   </div>
                   {call.description && <p className="text-sm text-text-secondary mt-1 leading-relaxed">{call.description}</p>}
                 </div>
-                <div className="shrink-0 flex items-center gap-1">
+                <div className="shrink-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => setEditCall({ ...call, tenant_id: tenantId, case_id: caseId, client_id: null, contact_id: null, case_code: null, case_title: null, no_case_intentional: false, follow_up_notes: null, email: null, follow_up_done: false, google_event_id: null })}
                     className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-border/10 text-text-secondary hover:text-text-primary cursor-pointer transition-colors"

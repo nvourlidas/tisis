@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, Search, UserPlus, X, Users, RotateCcw, Pencil, Check } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { fetchCaseContacts, addContactToCase, removeContactFromCase, updateCaseContactRole } from '../caseUtils';
@@ -15,6 +16,7 @@ type ContactOption = { id: string; name: string; phone: string | null };
 type Mode = 'none' | 'search';
 
 export default function CaseContacts({ caseId, tenantId }: Props) {
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState<CaseContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<Mode>('none');
@@ -283,9 +285,13 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
             </thead>
             <tbody className="divide-y divide-border/10">
               {contacts.map((c) => (
-                <tr key={c.contact_id} className="hover:bg-border/5 transition-colors">
-                  <td className="px-4 py-3 font-medium text-text-primary">{c.name}</td>
-                  <td className="px-4 py-3">
+                <tr
+                  key={c.contact_id}
+                  onClick={() => navigate(`/contacts/${c.contact_id}`)}
+                  className="group/row hover:bg-border/5 transition-colors cursor-pointer"
+                >
+                  <td className="px-4 py-3 font-medium text-text-primary group-hover/row:underline">{c.name}</td>
+                  <td className="px-4 py-3 cursor-default" onClick={(e) => e.stopPropagation()}>
                     {editingRoleFor === c.contact_id ? (
                       <div className="flex items-center gap-1.5">
                         <RoleSelect tenantId={tenantId} value={editRoleValue} onChange={setEditRoleValue} />
@@ -333,7 +339,7 @@ export default function CaseContacts({ caseId, tenantId }: Props) {
                   <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{c.email ?? '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <button
-                      onClick={() => removeContact(c.contact_id)}
+                      onClick={(e) => { e.stopPropagation(); removeContact(c.contact_id); }}
                       disabled={removing === c.contact_id}
                       className="h-7 w-7 inline-flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-secondary hover:text-danger transition-colors cursor-pointer disabled:opacity-50"
                     >
